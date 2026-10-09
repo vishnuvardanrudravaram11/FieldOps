@@ -225,8 +225,9 @@ def sla_(p3, make_member):
     """Phase 3 organization plus a service manager and an organization-wide request SLA profile: HIGH = respond in
     30 min / resolve in 120 min, warning at 80 %. Operations managers are told about warnings and breaches, the
     service managers about a resolution still unmet 60 minutes after its breach."""
-    from apps.rbac import services as rbac_services
     from apps.sla import services as sla
+
+    from apps.rbac import services as rbac_services
 
     org = p3["org"]
     svc = make_member(org, "svc@alpha.test", "service_manager")

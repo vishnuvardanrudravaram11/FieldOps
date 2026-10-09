@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load ui_tags %}
+{% block body_class %}fx-app{% endblock %}
+{% block body %}
+<div class="fx-layout" id="fx-layout">
+  <aside class="fx-sidebar" id="fx-sidebar" aria-label="Primary navigation">
+    <div class="fx-sidebar-header">
+      <a href="{% url 'ui:home' %}" class="fx-brand px-3 py-3 text-decoration-none">
+        <span class="fx-brand-mark">FX</span> FieldOps Nexus
+      </a>
+      {% if shell_org %}<div class="fx-org-chip" title="{{ shell_org.name }}">{{ shell_org.name }}</div>{% endif %}
+    </div>
+    <nav class="fx-nav">
+      {% for section, items in shell_nav_sections.items %}
+        <div class="fx-nav-section">{{ section }}</div>
+        {% for item in items %}
+          <a class="fx-nav-link {% if item.active %}active{% endif %}" href="{{ item.url }}">{% icon item.icon %} {{ item.label }}</a>
+        {% endfor %}
+      {% endfor %}
+    </nav>
+  </aside>
+  <div class="fx-sidebar-backdrop" data-fx-toggle-nav aria-hidden="true"></div>
+  <div class="fx-main">
+    <header class="fx-topbar">
+      <button class="btn btn-sm btn-outline-secondary d-lg-none" type="button" aria-label="Toggle navigation"
+              data-fx-toggle-nav>{% icon 'menu' %}</button>
+      {% if shell_org %}
+      <form class="fx-search" role="search" autocomplete="off">
+        {% icon 'search' 16 %}
+        <input type="search" name="q" placeholder="Search users, roles…" aria-label="Search"
+               hx-get="{% url 'ui:search' %}" hx-trigger="input changed delay:300ms, search"
+               hx-target="#fx-search-results" hx-indicator=".fx-search">
+        <div id="fx-search-results" class="fx-search-results"></div>
+      </form>
+      {% endif %}
+      <div class="ms-auto d-flex align-items-center gap-3">
+        {% if shell_org %}
+        <div hx-get="{% url 'notifications:bell' %}" hx-trigger="load, every 60s" hx-swap="innerHTML" class="fx-bell-slot"></div>
+        {% endif %}
+        {% if shell_memberships|length > 1 %}
+        <form method="post" action="{% url 'ui:switch_org' %}" class="m-0">{% csrf_token %}
+          <select name="organization" class="form-select form-select-sm" aria-label="Switch organization" onchange="this.form.submit()">
+            {% for m in shell_memberships %}<option value="{{ m.organization_id }}" {% if m.organization_id == shell_org.pk %}selected{% endif %}>{{ m.organization.name }}</option>{% endfor %}
+          </select>
+        </form>
+        {% endif %}
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">{{ request.user.display_name }}</button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><span class="dropdown-item-text small text-body-secondary">{{ request.user.email }}</span></li>
+            <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">My profile</a></li>
+            <li><a class="dropdown-item" href="{% url 'accounts:password_change' %}">Change password</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="dropdown-item">Sign out</button></form></li>
+          </ul>
+        </div>
+      </div>
+    </header>
+    <main class="fx-content" id="main">
+      {% block breadcrumbs %}{% endblock %}
+      {% include "components/_messages.html" %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% endblock %}
