@@ -1,0 +1,107 @@
+<<<<<<< HEAD
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, staging, dev ]
+  pull_request:
+    branches: [ main, staging, dev ]
+
+jobs:
+  lint-and-format:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Linting Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort bandit
+
+      - name: Check Code Formatting (Black)
+        run: |
+          black --check src tests
+
+      - name: Check Import Order (isort)
+        run: |
+          isort --check-only src tests
+
+      - name: Flake8 Linting
+        run: |
+          flake8 src tests --max-line-length=120 --exclude=migrations
+
+      - name: Security Scan (Bandit)
+        run: |
+          bandit -r src -ll
+=======
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: {POSTGRES_USER: fieldops, POSTGRES_PASSWORD: ci_only_password, POSTGRES_DB: fieldops}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fieldops" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DATABASE_URL: postgres://fieldops:ci_only_password@localhost:5432/fieldops
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -r requirements.lock pytest pytest-django pytest-cov ruff
+      - name: Lint
+        run: ruff check src tests manage.py
+      - name: Migrations are in sync and apply to a fresh DB
+        run: |
+          python manage.py makemigrations --check --dry-run
+          python manage.py migrate --noinput
+      - name: Deployment check
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.prod
+          DJANGO_SECRET_KEY: ci-generated-${{ github.run_id }}-${{ github.sha }}-not-a-real-secret-0123456789
+        run: python manage.py check --deploy --fail-level ERROR
+      - name: Tests
+        run: pytest --cov=src/apps --cov-report=term-missing --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        with: {name: coverage, path: coverage.xml}
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Dependency vulnerability audit
+        run: pip install pip-audit && pip-audit -r requirements.lock
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env: {GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t fieldops-nexus:ci .
+>>>>>>> e530db0434183ed2998b5450707c7ff90c83970f
