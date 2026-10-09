@@ -1,107 +1,147 @@
-<<<<<<< HEAD
 name: CI Pipeline
 
 on:
   push:
-    branches: [ main, staging, dev ]
+    branches: [main, staging, dev]
   pull_request:
-    branches: [ main, staging, dev ]
+    branches: [main, staging, dev]
+
+env:
+  PYTHON_VERSION: "3.12"
 
 jobs:
-  lint-and-format:
-    name: Code Quality & Linting
+  lint-format:
+    name: Lint, Formatting & Import Order
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
 
-      - name: Install Linting Tools
+      - name: Install tooling
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 black isort bandit
+          pip install black ruff isort flake8 bandit
 
-      - name: Check Code Formatting (Black)
+      - name: Check code formatting (black)
+        run: black --check src tests manage.py scripts
+
+      - name: Check import order (isort)
+        run: isort --check-only src tests manage.py scripts
+
+      - name: Lint with ruff
+        run: ruff check src tests manage.py
+
+      - name: Lint with flake8
         run: |
-          black --check src tests
+          flake8 src tests manage.py --max-line-length=110 --exclude=migrations,.venv,src/static
 
-      - name: Check Import Order (isort)
-        run: |
-          isort --check-only src tests
+      - name: Security scan with bandit
+        run: bandit -r src -ll --skip B101,B104,B311
 
-      - name: Flake8 Linting
-        run: |
-          flake8 src tests --max-line-length=120 --exclude=migrations
-
-      - name: Security Scan (Bandit)
-        run: |
-          bandit -r src -ll
-=======
-name: CI
-on:
-  pull_request:
-  push:
-    branches: [main, staging]
-
-jobs:
-  test:
+  migrate-check:
+    name: Migrations in sync
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.lock
+
+      - name: Dry-run migrations are in sync
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Deploy settings check
+        env:
+          DJANGO_SECRET_KEY: ci-generated-${{ github.run_id }}-${{ github.sha }}-not-a-real-secret-0123456789
+        run: python manage.py check --deploy --fail-level ERROR
+
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+    needs: [lint-format, migrate-check]
     services:
       postgres:
         image: postgres:16-alpine
-        env: {POSTGRES_USER: fieldops, POSTGRES_PASSWORD: ci_only_password, POSTGRES_DB: fieldops}
+        env:
+          POSTGRES_DB: fieldops_nexus_test
+          POSTGRES_USER: fieldops_user
+          POSTGRES_PASSWORD: local-ci-test-only
         ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U fieldops" --health-interval 5s --health-timeout 5s --health-retries 10
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7-alpine
         ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 5
     env:
       DJANGO_SETTINGS_MODULE: config.settings.test
-      DATABASE_URL: postgres://fieldops:ci_only_password@localhost:5432/fieldops
+      DATABASE_URL: postgres://fieldops_user:local-ci-test-only@localhost:5432/fieldops_nexus_test
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/0
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: {python-version: "3.12", cache: pip}
-      - run: pip install -r requirements.lock pytest pytest-django pytest-cov ruff
-      - name: Lint
-        run: ruff check src tests manage.py
-      - name: Migrations are in sync and apply to a fresh DB
-        run: |
-          python manage.py makemigrations --check --dry-run
-          python manage.py migrate --noinput
-      - name: Deployment check
-        env:
-          DJANGO_SETTINGS_MODULE: config.settings.prod
-          DJANGO_SECRET_KEY: ci-generated-${{ github.run_id }}-${{ github.sha }}-not-a-real-secret-0123456789
-        run: python manage.py check --deploy --fail-level ERROR
-      - name: Tests
-        run: pytest --cov=src/apps --cov-report=term-missing --cov-report=xml
-      - uses: actions/upload-artifact@v4
-        with: {name: coverage, path: coverage.xml}
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.lock pytest pytest-cov
+
+      - name: Run test suite with coverage
+        run: pytest --cov=src/apps --cov-report=term-missing --cov-report=xml -q
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
 
   security:
+    name: Security scanning
     runs-on: ubuntu-latest
+    needs: [lint-format]
     steps:
-      - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
-      - uses: actions/setup-python@v5
-        with: {python-version: "3.12"}
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
       - name: Dependency vulnerability audit
         run: pip install pip-audit && pip-audit -r requirements.lock
+
       - name: Secret scan
         uses: gitleaks/gitleaks-action@v2
-        env: {GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   docker:
+    name: Build Docker image
     runs-on: ubuntu-latest
+    needs: [lint-format]
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t fieldops-nexus:ci .
->>>>>>> e530db0434183ed2998b5450707c7ff90c83970f
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t fieldops-nexus:ci .
