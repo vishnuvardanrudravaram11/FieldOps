@@ -1,4 +1,5 @@
 """Test settings. Uses a dedicated PostgreSQL database (Django prefixes it with test_)."""
+
 import os
 import secrets
 

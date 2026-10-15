@@ -28,7 +28,11 @@ def download(request, pk):
             raise Http404  # out of scope looks the same as absent
     elif att.read_permission and not rbac.has_permission(request.membership, att.read_permission):
         raise PermissionDenied
-    response = FileResponse(att.file.open("rb"), as_attachment=True, filename=att.original_name,
-                            content_type="application/octet-stream")
+    response = FileResponse(
+        att.file.open("rb"),
+        as_attachment=True,
+        filename=att.original_name,
+        content_type="application/octet-stream",
+    )
     response["X-Content-Type-Options"] = "nosniff"
     return response

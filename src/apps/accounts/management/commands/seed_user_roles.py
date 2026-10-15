@@ -154,9 +154,7 @@ class Command(BaseCommand):
 
             # Membership in organization
             membership, _ = Membership.objects.unscoped().get_or_create(
-                organization=org,
-                user=user,
-                defaults={"job_title": p["job_title"], "status": "ACTIVE"}
+                organization=org, user=user, defaults={"job_title": p["job_title"], "status": "ACTIVE"}
             )
             membership.status = "ACTIVE"
             membership.job_title = p["job_title"]
@@ -166,9 +164,7 @@ class Command(BaseCommand):
             role = Role.objects.unscoped().filter(organization=org, system_key=p["role_key"]).first()
             if role:
                 MembershipRole.objects.get_or_create(
-                    membership=membership,
-                    role=role,
-                    defaults={"site": None}
+                    membership=membership, role=role, defaults={"site": None}
                 )
 
             # If portal client, setup PortalAccount
@@ -176,14 +172,18 @@ class Command(BaseCommand):
                 PortalAccount.objects.unscoped().get_or_create(
                     organization=org,
                     membership=membership,
-                    defaults={"company_name": "Acme Corporation", "is_enabled": True}
+                    defaults={"company_name": "Acme Corporation", "is_enabled": True},
                 )
 
-            created_users.append({
-                "role": role.name if role else p["role_key"],
-                "role_key": p["role_key"],
-                "email": email,
-                "name": p["full_name"],
-            })
+            created_users.append(
+                {
+                    "role": role.name if role else p["role_key"],
+                    "role_key": p["role_key"],
+                    "email": email,
+                    "name": p["full_name"],
+                }
+            )
 
-        self.stdout.write(self.style.SUCCESS("\n[SUCCESS] Successfully seeded all user credentials and roles!"))
+        self.stdout.write(
+            self.style.SUCCESS("\n[SUCCESS] Successfully seeded all user credentials and roles!")
+        )

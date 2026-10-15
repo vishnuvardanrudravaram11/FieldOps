@@ -4,6 +4,7 @@
 Env in: SUPABASE_PROJECT_REF, SUPABASE_ADMIN_PASSWORD (the `postgres` password you set in the Supabase dashboard).
 Refuses to overwrite an existing .env.prod. Secret values are never printed.
 """
+
 import os
 import secrets
 import sys

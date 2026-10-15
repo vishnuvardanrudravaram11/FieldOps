@@ -1,5 +1,6 @@
 """Audit foundation. Call ``record()`` from service-layer code inside the same transaction as the change,
 so the audit row and the business change commit (or roll back) together."""
+
 from __future__ import annotations
 
 import datetime
@@ -40,9 +41,16 @@ def site_of(target):
 
         if isinstance(target, Site):
             return target.pk
-        for path in (("site_id",), ("asset", "site_id"), ("work_order", "site_id"), ("warehouse", "site_id"),
-                     ("plan", "site_id"), ("balance", "warehouse", "site_id"), ("tracking", "site_id"),
-                     ("request", "site_id")):
+        for path in (
+            ("site_id",),
+            ("asset", "site_id"),
+            ("work_order", "site_id"),
+            ("warehouse", "site_id"),
+            ("plan", "site_id"),
+            ("balance", "warehouse", "site_id"),
+            ("tracking", "site_id"),
+            ("request", "site_id"),
+        ):
             obj = target
             for part in path:
                 obj = getattr(obj, part, None)

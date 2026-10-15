@@ -7,8 +7,15 @@ from apps.ui.forms import BootstrapFormMixin
 
 from .models import MAX_ESCALATION_ORDER, Zone
 
-WEEKDAYS = [(1, "Monday"), (2, "Tuesday"), (3, "Wednesday"), (4, "Thursday"), (5, "Friday"), (6, "Saturday"),
-            (7, "Sunday")]
+WEEKDAYS = [
+    (1, "Monday"),
+    (2, "Tuesday"),
+    (3, "Wednesday"),
+    (4, "Thursday"),
+    (5, "Friday"),
+    (6, "Saturday"),
+    (7, "Sunday"),
+]
 
 _CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9_.-]{0,29}$")
 _PHONE_RE = re.compile(r"^[0-9+\s\-()]{5,32}$")
@@ -18,60 +25,69 @@ class SiteForm(BootstrapFormMixin, forms.Form):
     code = forms.CharField(
         max_length=30,
         help_text="Short unique identifier, e.g. PLANT-01 (1-30 chars: uppercase letters, numbers, '.', '_', '-').",
-        widget=forms.TextInput(attrs={"placeholder": "e.g. PLANT-01", "style": "text-transform: uppercase;"})
+        widget=forms.TextInput(attrs={"placeholder": "e.g. PLANT-01", "style": "text-transform: uppercase;"}),
     )
     name = forms.CharField(
-        max_length=150,
-        widget=forms.TextInput(attrs={"placeholder": "e.g. Main Plant & Headquarters"})
+        max_length=150, widget=forms.TextInput(attrs={"placeholder": "e.g. Main Plant & Headquarters"})
     )
     description = forms.CharField(
         required=False,
-        widget=forms.Textarea(attrs={"rows": 2, "placeholder": "Brief description of the facility"})
+        widget=forms.Textarea(attrs={"rows": 2, "placeholder": "Brief description of the facility"}),
     )
     address = forms.CharField(
         required=False,
-        widget=forms.Textarea(attrs={"rows": 2, "placeholder": "Street address, plot number, industrial area"})
+        widget=forms.Textarea(
+            attrs={"rows": 2, "placeholder": "Street address, plot number, industrial area"}
+        ),
     )
     country = forms.CharField(
         max_length=2,
         required=False,
         help_text="ISO country code, e.g. IN, US, GB",
-        widget=forms.TextInput(attrs={"placeholder": "IN", "maxlength": 2, "id": "id_country", "style": "text-transform: uppercase;"})
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "IN",
+                "maxlength": 2,
+                "id": "id_country",
+                "style": "text-transform: uppercase;",
+            }
+        ),
     )
     state_region = forms.CharField(
         max_length=100,
         required=False,
         label="State / region",
-        widget=forms.TextInput(attrs={"placeholder": "Select or type state/region", "id": "id_state_region", "autocomplete": "off"})
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "Select or type state/region",
+                "id": "id_state_region",
+                "autocomplete": "off",
+            }
+        ),
     )
     city = forms.CharField(
         max_length=100,
         required=False,
-        widget=forms.TextInput(attrs={"placeholder": "Select or type city", "id": "id_city", "autocomplete": "off"})
+        widget=forms.TextInput(
+            attrs={"placeholder": "Select or type city", "id": "id_city", "autocomplete": "off"}
+        ),
     )
     postal_code = forms.CharField(
-        max_length=20,
-        required=False,
-        widget=forms.TextInput(attrs={"placeholder": "e.g. 560001 or 10001"})
+        max_length=20, required=False, widget=forms.TextInput(attrs={"placeholder": "e.g. 560001 or 10001"})
     )
     timezone = forms.CharField(
         max_length=64,
         help_text="IANA name, e.g. Asia/Kolkata, UTC",
-        widget=forms.TextInput(attrs={"placeholder": "e.g. Asia/Kolkata", "id": "id_timezone"})
+        widget=forms.TextInput(attrs={"placeholder": "e.g. Asia/Kolkata", "id": "id_timezone"}),
     )
     contact_name = forms.CharField(
-        max_length=150,
-        required=False,
-        widget=forms.TextInput(attrs={"placeholder": "e.g. John Doe"})
+        max_length=150, required=False, widget=forms.TextInput(attrs={"placeholder": "e.g. John Doe"})
     )
     contact_email = forms.EmailField(
-        required=False,
-        widget=forms.EmailInput(attrs={"placeholder": "contact@example.com"})
+        required=False, widget=forms.EmailInput(attrs={"placeholder": "contact@example.com"})
     )
     contact_phone = forms.CharField(
-        max_length=32,
-        required=False,
-        widget=forms.TextInput(attrs={"placeholder": "e.g. +91 98765 43210"})
+        max_length=32, required=False, widget=forms.TextInput(attrs={"placeholder": "e.g. +91 98765 43210"})
     )
 
     def clean_code(self):
@@ -79,7 +95,9 @@ class SiteForm(BootstrapFormMixin, forms.Form):
         if not code:
             raise forms.ValidationError("Site code is required.")
         if not _CODE_RE.fullmatch(code):
-            raise forms.ValidationError("Site code must be 1-30 characters: letters, digits, '.', '_' or '-'.")
+            raise forms.ValidationError(
+                "Site code must be 1-30 characters: letters, digits, '.', '_' or '-'."
+            )
         return code
 
     def clean_name(self):
@@ -137,8 +155,9 @@ class ZoneForm(BootstrapFormMixin, forms.Form):
     name = forms.CharField(max_length=120)
     zone_type = forms.ChoiceField(choices=Zone.ZoneType.choices, label="Type")
     code = forms.CharField(max_length=30, required=False)
-    parent = forms.ModelChoiceField(queryset=Zone.objects.none(), required=False,
-                                    empty_label="(top level of the site)")
+    parent = forms.ModelChoiceField(
+        queryset=Zone.objects.none(), required=False, empty_label="(top level of the site)"
+    )
     description = forms.CharField(max_length=300, required=False)
 
     def __init__(self, *args, site, zone=None, **kwargs):
@@ -157,7 +176,9 @@ class ZoneForm(BootstrapFormMixin, forms.Form):
 class CalendarForm(BootstrapFormMixin, forms.Form):
     name = forms.CharField(max_length=100)
     is_24x7 = forms.BooleanField(required=False, label="Operates 24x7")
-    working_days = forms.MultipleChoiceField(choices=WEEKDAYS, required=False, widget=forms.CheckboxSelectMultiple)
+    working_days = forms.MultipleChoiceField(
+        choices=WEEKDAYS, required=False, widget=forms.CheckboxSelectMultiple
+    )
     start_time = forms.TimeField(required=False, widget=forms.TimeInput(attrs={"type": "time"}))
     end_time = forms.TimeField(required=False, widget=forms.TimeInput(attrs={"type": "time"}))
     is_default = forms.BooleanField(required=False, label="Default calendar of the site")
@@ -177,6 +198,10 @@ class ContactForm(BootstrapFormMixin, forms.Form):
     role_title = forms.CharField(max_length=100, required=False, label="Role")
     phone = forms.CharField(max_length=32, required=False)
     email = forms.EmailField(required=False)
-    escalation_order = forms.IntegerField(min_value=1, max_value=MAX_ESCALATION_ORDER, required=False,
-                                          help_text="1 = contacted first. Leave empty to append at the end.")
+    escalation_order = forms.IntegerField(
+        min_value=1,
+        max_value=MAX_ESCALATION_ORDER,
+        required=False,
+        help_text="1 = contacted first. Leave empty to append at the end.",
+    )
     notes = forms.CharField(max_length=300, required=False)

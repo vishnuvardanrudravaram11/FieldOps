@@ -5,29 +5,42 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('rbac', '0001_initial'),
-        ('sites', '0001_initial'),
-        ('tenancy', '0001_initial'),
+        ("rbac", "0001_initial"),
+        ("sites", "0001_initial"),
+        ("tenancy", "0001_initial"),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='membershiprole',
-            name='uniq_membership_role',
+            model_name="membershiprole",
+            name="uniq_membership_role",
         ),
         migrations.AddField(
-            model_name='membershiprole',
-            name='site',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='+', to='sites.site'),
+            model_name="membershiprole",
+            name="site",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="+",
+                to="sites.site",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='membershiprole',
-            constraint=models.UniqueConstraint(condition=models.Q(('site__isnull', True)), fields=('membership', 'role'), name='uniq_membership_role_orgwide'),
+            model_name="membershiprole",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("site__isnull", True)),
+                fields=("membership", "role"),
+                name="uniq_membership_role_orgwide",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='membershiprole',
-            constraint=models.UniqueConstraint(condition=models.Q(('site__isnull', False)), fields=('membership', 'role', 'site'), name='uniq_membership_role_site'),
+            model_name="membershiprole",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("site__isnull", False)),
+                fields=("membership", "role", "site"),
+                name="uniq_membership_role_site",
+            ),
         ),
     ]

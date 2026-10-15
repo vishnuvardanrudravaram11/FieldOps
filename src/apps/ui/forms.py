@@ -1,4 +1,5 @@
 """Form helpers shared by module screens."""
+
 from django import forms
 
 
@@ -22,4 +23,6 @@ class BootstrapFormMixin:
 
 
 class ReasonForm(BootstrapFormMixin, forms.Form):
-    reason = forms.CharField(max_length=300, widget=forms.TextInput(attrs={"placeholder": "Reason (required)"}))
+    reason = forms.CharField(
+        max_length=300, widget=forms.TextInput(attrs={"placeholder": "Reason (required)"})
+    )

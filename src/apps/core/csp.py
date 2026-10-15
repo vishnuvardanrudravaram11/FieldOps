@@ -2,6 +2,7 @@
 through ``apps.core.csp.csp_nonce``, as ``{{ csp_nonce }}`` for the few inline ``<script>`` blocks. Inline event
 handler attributes are not allowed (they were moved into ``static/js/app.js``); inline ``style`` attributes are
 tolerated (``style-src 'unsafe-inline'``) because they cannot execute script."""
+
 import secrets
 
 POLICY = (
@@ -29,7 +30,11 @@ class ContentSecurityPolicyMiddleware:
         request.csp_nonce = secrets.token_urlsafe(16)
         response = self.get_response(request)
         if "Content-Security-Policy" not in response:
-            policy = DOCS_POLICY if request.path.startswith("/api/v1/docs/") else POLICY.format(nonce=request.csp_nonce)
+            policy = (
+                DOCS_POLICY
+                if request.path.startswith("/api/v1/docs/")
+                else POLICY.format(nonce=request.csp_nonce)
+            )
             response["Content-Security-Policy"] = policy
         # the M12 scanner needs the camera on our own pages only (never in embedded third-party content)
         response.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")

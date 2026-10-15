@@ -1,4 +1,5 @@
 """Organization + membership lifecycle (service layer: validation, transactions, audit)."""
+
 from __future__ import annotations
 
 import re
@@ -41,10 +42,22 @@ def _check_timezone(tz: str):
 
 
 @transaction.atomic
-def create_organization(*, name, owner_email, owner_name, actor=None, slug=None, timezone_name="UTC",
-                        country="", contact_email="", request=None) -> tuple[Organization, Membership]:
+def create_organization(
+    *,
+    name,
+    owner_email,
+    owner_name,
+    actor=None,
+    slug=None,
+    timezone_name="UTC",
+    country="",
+    contact_email="",
+    request=None,
+) -> tuple[Organization, Membership]:
     """Enterprise onboarding: creates the org, seeds system roles, invites the initial Owner."""
-    if actor is not None and not (actor.is_superuser or actor.is_staff or getattr(actor, "is_platform_admin", False)):
+    if actor is not None and not (
+        actor.is_superuser or actor.is_staff or getattr(actor, "is_platform_admin", False)
+    ):
         raise PermissionDenied("Only administrators can create organizations.")
     name = (name or "").strip()
     if len(name) < 2:
@@ -57,22 +70,43 @@ def create_organization(*, name, owner_email, owner_name, actor=None, slug=None,
     try:
         with transaction.atomic():
             org = Organization.objects.create(
-                name=name, slug=slug, timezone=timezone_name, country=country.upper()[:2],
-                contact_email=contact_email, created_by=actor,
+                name=name,
+                slug=slug,
+                timezone=timezone_name,
+                country=country.upper()[:2],
+                contact_email=contact_email,
+                created_by=actor,
             )
     except IntegrityError as exc:
-        raise Conflict("An organization with this name or slug already exists.", code="duplicate_organization") from exc
+        raise Conflict(
+            "An organization with this name or slug already exists.", code="duplicate_organization"
+        ) from exc
     roles = rbac.seed_system_roles(org)
-    audit.record("organization.created", actor=actor, organization=org, target=org,
-                 after=audit.snapshot(org, _ORG_FIELDS + ["slug", "status"]), request=request)
-    membership = _invite(org, email=owner_email, full_name=owner_name, roles=[roles["owner"]],
-                         invited_by=actor, request=request, system=True)
+    audit.record(
+        "organization.created",
+        actor=actor,
+        organization=org,
+        target=org,
+        after=audit.snapshot(org, _ORG_FIELDS + ["slug", "status"]),
+        request=request,
+    )
+    membership = _invite(
+        org,
+        email=owner_email,
+        full_name=owner_name,
+        roles=[roles["owner"]],
+        invited_by=actor,
+        request=request,
+        system=True,
+    )
     return org, membership
 
 
 @transaction.atomic
 def set_organization_status(org: Organization, *, active: bool, actor=None, reason: str = "", request=None):
-    if actor is not None and not (actor.is_superuser or actor.is_staff or getattr(actor, "is_platform_admin", False)):
+    if actor is not None and not (
+        actor.is_superuser or actor.is_staff or getattr(actor, "is_platform_admin", False)
+    ):
         raise PermissionDenied("Only administrators can change organization status.")
     target = Organization.Status.ACTIVE if active else Organization.Status.SUSPENDED
     if org.status == target:
@@ -83,9 +117,15 @@ def set_organization_status(org: Organization, *, active: bool, actor=None, reas
     org.status = target
     org.suspended_reason = "" if active else reason.strip()[:300]
     org.save(update_fields=["status", "suspended_reason", "updated_at"])
-    audit.record("organization.activated" if active else "organization.suspended", actor=actor,
-                 organization=org, target=org, before=before,
-                 after={"status": org.status, "suspended_reason": org.suspended_reason}, request=request)
+    audit.record(
+        "organization.activated" if active else "organization.suspended",
+        actor=actor,
+        organization=org,
+        target=org,
+        before=before,
+        after={"status": org.status, "suspended_reason": org.suspended_reason},
+        request=request,
+    )
 
 
 @transaction.atomic
@@ -102,17 +142,27 @@ def update_organization(org: Organization, *, actor, request=None, **changes) ->
         with transaction.atomic():
             org.save()
     except IntegrityError as exc:
-        raise Conflict("An organization with this name already exists.", code="duplicate_organization") from exc
-    audit.record("organization.updated", actor=actor, organization=org, target=org, before=before,
-                 after=audit.snapshot(org, _ORG_FIELDS), request=request)
+        raise Conflict(
+            "An organization with this name already exists.", code="duplicate_organization"
+        ) from exc
+    audit.record(
+        "organization.updated",
+        actor=actor,
+        organization=org,
+        target=org,
+        before=before,
+        after=audit.snapshot(org, _ORG_FIELDS),
+        request=request,
+    )
     return org
 
 
 # --- members ---------------------------------------------------------------------------------
 
 
-def _invite(org, *, email, full_name, roles, invited_by, request=None, system=False,
-            assignments=None) -> Membership:
+def _invite(
+    org, *, email, full_name, roles, invited_by, request=None, system=False, assignments=None
+) -> Membership:
     from apps.accounts import services as accounts
 
     email = _check_email(email)
@@ -129,16 +179,29 @@ def _invite(org, *, email, full_name, roles, invited_by, request=None, system=Fa
     # Existing accounts (with a password) are activated at once (D-006); new accounts must set a password.
     status = Membership.Status.INVITED if not user.has_usable_password() else Membership.Status.ACTIVE
     membership = Membership(
-        organization=org, user=user, status=status, invited_by=invited_by,
+        organization=org,
+        user=user,
+        status=status,
+        invited_by=invited_by,
         activated_at=timezone.now() if status == Membership.Status.ACTIVE else None,
     )
     membership.save()
     assignments = assignments if assignments is not None else [(r, None) for r in roles]
     rbac.set_membership_assignments(membership, assignments, actor=invited_by, request=request, system=system)
-    audit.record("user.invited", actor=invited_by, organization=org, target=membership,
-                 target_repr=f"{user.email} @ {org.slug}",
-                 after={"email": user.email, "status": status, "roles": sorted(rbac._describe(r, st) for r, st in assignments),
-                        "new_account": created_user}, request=request)
+    audit.record(
+        "user.invited",
+        actor=invited_by,
+        organization=org,
+        target=membership,
+        target_repr=f"{user.email} @ {org.slug}",
+        after={
+            "email": user.email,
+            "status": status,
+            "roles": sorted(rbac._describe(r, st) for r, st in assignments),
+            "new_account": created_user,
+        },
+        request=request,
+    )
     accounts.queue_invitation_email(user, org, membership, new_account=created_user)
     return membership
 
@@ -166,19 +229,29 @@ def resolve_assignments(org, *, role_ids=None, site_ids=None, assignments=None) 
     out = []
     for rid, sid in pairs:
         if sid is not None and roles[rid].is_owner:
-            raise ValidationFailed("The Owner role cannot be limited to a site.", code="owner_not_site_scoped")
+            raise ValidationFailed(
+                "The Owner role cannot be limited to a site.", code="owner_not_site_scoped"
+            )
         out.append((roles[rid], sites[sid] if sid is not None else None))
     return out
 
 
 @transaction.atomic
-def invite_member(org, *, email, full_name, role_ids=None, actor, request=None, site_ids=None,
-                  assignments=None) -> Membership:
+def invite_member(
+    org, *, email, full_name, role_ids=None, actor, request=None, site_ids=None, assignments=None
+) -> Membership:
     resolved = resolve_assignments(org, role_ids=role_ids, site_ids=site_ids, assignments=assignments)
     if not resolved:
         raise ValidationFailed("Assign at least one role.", code="roles_required")
-    return _invite(org, email=email, full_name=full_name, roles=[r for r, _ in resolved], invited_by=actor,
-                   request=request, assignments=resolved)
+    return _invite(
+        org,
+        email=email,
+        full_name=full_name,
+        roles=[r for r, _ in resolved],
+        invited_by=actor,
+        request=request,
+        assignments=resolved,
+    )
 
 
 @transaction.atomic
@@ -187,14 +260,29 @@ def resend_invitation(membership: Membership, *, actor, request=None):
 
     if membership.status != Membership.Status.INVITED:
         raise Conflict("Only pending invitations can be re-sent.", code="not_pending")
-    audit.record("user.invitation_resent", actor=actor, organization=membership.organization,
-                 target=membership, target_repr=membership.user.email, request=request)
+    audit.record(
+        "user.invitation_resent",
+        actor=actor,
+        organization=membership.organization,
+        target=membership,
+        target_repr=membership.user.email,
+        request=request,
+    )
     accounts.queue_invitation_email(membership.user, membership.organization, membership, new_account=True)
 
 
 @transaction.atomic
-def update_member(membership: Membership, *, actor, full_name=None, job_title=None, role_ids=None, request=None,
-                  site_ids=None, assignments=None):
+def update_member(
+    membership: Membership,
+    *,
+    actor,
+    full_name=None,
+    job_title=None,
+    role_ids=None,
+    request=None,
+    site_ids=None,
+    assignments=None,
+):
     user = membership.user
     before = {"full_name": user.full_name, "job_title": membership.job_title}
     if full_name is not None:
@@ -206,15 +294,24 @@ def update_member(membership: Membership, *, actor, full_name=None, job_title=No
         membership.job_title = job_title.strip()
         membership.save(update_fields=["job_title", "updated_at"])
     if role_ids is not None or assignments is not None:
-        resolved = resolve_assignments(membership.organization, role_ids=role_ids, site_ids=site_ids,
-                                       assignments=assignments)
+        resolved = resolve_assignments(
+            membership.organization, role_ids=role_ids, site_ids=site_ids, assignments=assignments
+        )
         if not resolved:
             raise ValidationFailed("Assign at least one valid role.", code="invalid_roles")
         rbac.set_membership_assignments(membership, resolved, actor=actor, request=request)
     after = {"full_name": user.full_name, "job_title": membership.job_title}
     if before != after:
-        audit.record("user.updated", actor=actor, organization=membership.organization, target=membership,
-                     target_repr=user.email, before=before, after=after, request=request)
+        audit.record(
+            "user.updated",
+            actor=actor,
+            organization=membership.organization,
+            target=membership,
+            target_repr=user.email,
+            before=before,
+            after=after,
+            request=request,
+        )
 
 
 @transaction.atomic
@@ -232,8 +329,9 @@ def remove_role_assignment(membership: Membership, *, assignment_id, actor, requ
     if len(keep) == len(mrs):
         raise NotFound("Role assignment not found.")
     if not keep:
-        raise ValidationFailed("A member must keep at least one role; deactivate the member instead.",
-                               code="roles_required")
+        raise ValidationFailed(
+            "A member must keep at least one role; deactivate the member instead.", code="roles_required"
+        )
     rbac.set_membership_assignments(membership, keep, actor=actor, request=request)
 
 
@@ -254,9 +352,16 @@ def set_member_active(membership: Membership, *, active: bool, actor, request=No
         membership.activated_at = timezone.now()
     rbac.clear_cache(membership)
     membership.save(update_fields=["status", "activated_at", "updated_at"])
-    audit.record("user.reactivated" if active else "user.deactivated", actor=actor,
-                 organization=membership.organization, target=membership, target_repr=membership.user.email,
-                 before=before, after={"status": membership.status}, request=request)
+    audit.record(
+        "user.reactivated" if active else "user.deactivated",
+        actor=actor,
+        organization=membership.organization,
+        target=membership,
+        target_repr=membership.user.email,
+        before=before,
+        after={"status": membership.status},
+        request=request,
+    )
 
 
 def get_membership(org, pk) -> Membership:

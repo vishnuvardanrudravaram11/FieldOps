@@ -6,6 +6,7 @@ restarts the whole container instead of leaving a silently half-dead service. SI
 (graceful shutdown), and each child's output goes straight to stdout/stderr (visible in the Render log stream).
 Memory-conscious (512 MB): one Gunicorn worker with threads and a solo Celery pool. Uses the project's only Celery app (`config`).
 """
+
 import os
 import signal
 import subprocess
@@ -20,11 +21,41 @@ if os.environ.get("RUN_MIGRATIONS_ON_START", "").lower() in {"1", "true", "yes"}
     subprocess.run([PY, "manage.py", "collectstatic", "--noinput"], check=True)
 
 CHILDREN = {
-    "web": [PY, "-m", "gunicorn", "config.wsgi:application", "--bind", f"0.0.0.0:{PORT}", "--workers", "1",
-            "--worker-class", "gthread", "--threads", "4", "--timeout", "60", "--graceful-timeout", "20",
-            "--access-logfile", "-", "--forwarded-allow-ips", "*"],
-    "celery": [PY, "-m", "celery", "-A", "config", "worker", "-B", "--pool=solo", "--loglevel=info",
-               "--schedule", "/tmp/celerybeat-schedule"],
+    "web": [
+        PY,
+        "-m",
+        "gunicorn",
+        "config.wsgi:application",
+        "--bind",
+        f"0.0.0.0:{PORT}",
+        "--workers",
+        "1",
+        "--worker-class",
+        "gthread",
+        "--threads",
+        "4",
+        "--timeout",
+        "60",
+        "--graceful-timeout",
+        "20",
+        "--access-logfile",
+        "-",
+        "--forwarded-allow-ips",
+        "*",
+    ],
+    "celery": [
+        PY,
+        "-m",
+        "celery",
+        "-A",
+        "config",
+        "worker",
+        "-B",
+        "--pool=solo",
+        "--loglevel=info",
+        "--schedule",
+        "/tmp/celerybeat-schedule",
+    ],
 }
 
 procs: dict[str, subprocess.Popen] = {}

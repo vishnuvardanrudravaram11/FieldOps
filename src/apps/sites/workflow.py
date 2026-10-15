@@ -1,4 +1,5 @@
 """Activation lifecycle shared by sites and zones (HPE: site status ACTIVE/INACTIVE)."""
+
 from apps.core.workflow import StateMachine, Transition
 
 ACTIVE = "ACTIVE"

@@ -1,4 +1,5 @@
 """Every state-changing UI control must hit a real backend action that persists, audits and enforces rules."""
+
 import pytest
 from django.core import mail
 
@@ -17,14 +18,21 @@ def _role(org, key):
 
 def test_role_create_edit_delete_via_ui(client, owner_a, org_a):
     client.force_login(owner_a)
-    r = client.post("/app/roles/new/", {"name": "Field Lead", "description": "d",
-                                        "permissions": ["user.view", "audit.view"]})
+    r = client.post(
+        "/app/roles/new/",
+        {"name": "Field Lead", "description": "d", "permissions": ["user.view", "audit.view"]},
+    )
     assert r.status_code == 302
     role = Role.objects.unscoped().get(organization=org_a, name="Field Lead")
-    assert set(role.role_permissions.values_list("permission__code", flat=True)) == {"user.view", "audit.view"}
+    assert set(role.role_permissions.values_list("permission__code", flat=True)) == {
+        "user.view",
+        "audit.view",
+    }
     assert client.get(f"/app/roles/{role.pk}/").status_code == 200
 
-    client.post(f"/app/roles/{role.pk}/", {"name": "Field Lead", "description": "x", "permissions": ["user.view"]})
+    client.post(
+        f"/app/roles/{role.pk}/", {"name": "Field Lead", "description": "x", "permissions": ["user.view"]}
+    )
     assert set(role.role_permissions.values_list("permission__code", flat=True)) == {"user.view"}
     assert AuditLog.objects.filter(organization=org_a, action="role.updated").exists()
 
@@ -51,7 +59,9 @@ def test_role_ui_requires_manage_permission(client, org_a, make_member):
 def test_member_update_roles_via_ui(client, owner_a, org_a, tech_a):
     m = Membership.objects.unscoped().get(organization=org_a, user=tech_a)
     client.force_login(owner_a)
-    r = client.post(f"/app/users/{m.pk}/", {"action": "update", "full_name": "Tess Tech", "job_title": "Lead"})
+    r = client.post(
+        f"/app/users/{m.pk}/", {"action": "update", "full_name": "Tess Tech", "job_title": "Lead"}
+    )
     assert r.status_code == 302
     r = client.post(f"/app/users/{m.pk}/", {"action": "assign_role", "role": _role(org_a, "supervisor").pk})
     assert r.status_code == 302
@@ -61,7 +71,9 @@ def test_member_update_roles_via_ui(client, owner_a, org_a, tech_a):
     m.refresh_from_db()
     tech_a.refresh_from_db()
     assert tech_a.full_name == "Tess Tech" and m.job_title == "Lead"
-    assert list(MembershipRole.objects.filter(membership=m).values_list("role__system_key", flat=True)) == ["supervisor"]
+    assert list(MembershipRole.objects.filter(membership=m).values_list("role__system_key", flat=True)) == [
+        "supervisor"
+    ]
     assert AuditLog.objects.filter(organization=org_a, action="membership.roles_changed").exists()
 
 
@@ -72,6 +84,7 @@ def test_member_deactivate_blocks_access_then_reactivate(client, owner_a, org_a,
     m.refresh_from_db()
     assert m.status == "SUSPENDED"
     from django.test import Client
+
     t = Client()
     t.force_login(tech_a)
     assert t.get("/app/").status_code in (302, 403)  # no active membership -> no tenant access
@@ -80,7 +93,8 @@ def test_member_deactivate_blocks_access_then_reactivate(client, owner_a, org_a,
     m.refresh_from_db()
     assert m.status == "ACTIVE"
     assert {"user.deactivated", "user.reactivated"} <= set(
-        AuditLog.objects.filter(organization=org_a).values_list("action", flat=True))
+        AuditLog.objects.filter(organization=org_a).values_list("action", flat=True)
+    )
 
 
 def test_owner_cannot_deactivate_self_via_ui(client, owner_a, org_a):
@@ -94,8 +108,14 @@ def test_owner_cannot_deactivate_self_via_ui(client, owner_a, org_a):
 def test_resend_invitation_sends_email(client, owner_a, org_a, django_capture_on_commit_callbacks):
     client.force_login(owner_a)
     with django_capture_on_commit_callbacks(execute=True):
-        client.post("/app/users/invite/", {"email": "pending@alpha.test", "full_name": "Pen Ding",
-                                           "roles": [_role(org_a, "technician").pk]})
+        client.post(
+            "/app/users/invite/",
+            {
+                "email": "pending@alpha.test",
+                "full_name": "Pen Ding",
+                "roles": [_role(org_a, "technician").pk],
+            },
+        )
     m = Membership.objects.unscoped().get(organization=org_a, user__email="pending@alpha.test")
     assert len(mail.outbox) == 1
     with django_capture_on_commit_callbacks(execute=True):
@@ -105,9 +125,18 @@ def test_resend_invitation_sends_email(client, owner_a, org_a, django_capture_on
 
 def test_organization_profile_edit_via_ui(client, owner_a, org_a):
     client.force_login(owner_a)
-    r = client.post("/app/organization/", {"name": "Alpha Renamed", "legal_name": "Alpha Pvt Ltd",
-                                           "timezone": "Asia/Kolkata", "country": "in", "contact_email": "",
-                                           "contact_phone": "", "address": "Plot 1"})
+    r = client.post(
+        "/app/organization/",
+        {
+            "name": "Alpha Renamed",
+            "legal_name": "Alpha Pvt Ltd",
+            "timezone": "Asia/Kolkata",
+            "country": "in",
+            "contact_email": "",
+            "contact_phone": "",
+            "address": "Plot 1",
+        },
+    )
     assert r.status_code == 302
     org = Organization.objects.get(pk=org_a.pk)
     assert org.name == "Alpha Renamed" and org.timezone == "Asia/Kolkata"
@@ -122,10 +151,10 @@ def test_organization_profile_read_only_for_viewers(client, org_a, make_member):
     assert client.post("/app/organization/", {"name": "Hacked", "timezone": "UTC"}).status_code == 403
 
 
-
-
 def test_notifications_ui_mark_read_and_all(client, owner_a, org_a):
-    ns = notif.notify(org_a, [owner_a], title="One", link="/app/users/") + notif.notify(org_a, [owner_a], title="Two")
+    ns = notif.notify(org_a, [owner_a], title="One", link="/app/users/") + notif.notify(
+        org_a, [owner_a], title="Two"
+    )
     client.force_login(owner_a)
     assert "One" in client.get("/app/notifications/bell/").content.decode()
     r = client.post(f"/app/notifications/{ns[0].pk}/read/")
@@ -175,4 +204,7 @@ def test_audit_ui_filters_and_detail(client, owner_a, org_a):
     assert "organization.created" in html
     entry = AuditLog.objects.filter(organization=org_a, action="organization.created").first()
     assert client.get(f"/app/audit/{entry.pk}/").status_code == 200
-    assert "organization.created" not in client.get("/app/audit/?q=nomatch-xyz").content.decode().split("<tbody>")[1]
+    assert (
+        "organization.created"
+        not in client.get("/app/audit/?q=nomatch-xyz").content.decode().split("<tbody>")[1]
+    )

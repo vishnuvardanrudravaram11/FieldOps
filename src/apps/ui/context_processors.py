@@ -20,11 +20,17 @@ def shell(request):
                 url = reverse(item.url_name)
             except NoReverseMatch:
                 continue
-            nav.append({
-                "label": item.label, "url": url, "icon": item.icon, "section": item.section,
-                "active": request.path.startswith(item.match_prefix) if item.match_prefix != "/app/"
-                else request.path.rstrip("/") == "/app",
-            })
+            nav.append(
+                {
+                    "label": item.label,
+                    "url": url,
+                    "icon": item.icon,
+                    "section": item.section,
+                    "active": request.path.startswith(item.match_prefix)
+                    if item.match_prefix != "/app/"
+                    else request.path.rstrip("/") == "/app",
+                }
+            )
     sections: dict[str, list] = {}
     for n in nav:
         sections.setdefault(n["section"], []).append(n)
@@ -32,6 +38,7 @@ def shell(request):
         "shell_org": getattr(request, "organization", None),
         "shell_membership": membership,
         "shell_nav_sections": sections,
-        "shell_memberships": getattr(request, "active_memberships", None) or list(selectors.active_memberships(user)),
+        "shell_memberships": getattr(request, "active_memberships", None)
+        or list(selectors.active_memberships(user)),
         "shell_tenant_error": getattr(request, "tenant_error", None),
     }

@@ -1,4 +1,5 @@
 """Base settings shared by every environment. All secrets/config come from the environment."""
+
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -263,7 +264,9 @@ SPECTACULAR_SETTINGS = {
     "All tenant data is scoped to the caller's active organization.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],  # docs/schema list endpoint names only, never tenant data (D: public docs for testers)
+    "SERVE_PERMISSIONS": [
+        "rest_framework.permissions.AllowAny"
+    ],  # docs/schema list endpoint names only, never tenant data (D: public docs for testers)
     "COMPONENT_SPLIT_REQUEST": True,
     "ENUM_NAME_OVERRIDES": {
         "SiteStatusEnum": "apps.sites.models.Status",
@@ -279,7 +282,9 @@ LOGGING = {
     "disable_existing_loggers": False,
     "filters": {"request_id": {"()": "apps.core.logging.RequestIdFilter"}},
     "formatters": {"json": {"()": "apps.core.logging.JsonFormatter"}},
-    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "json", "filters": ["request_id"]}},
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "json", "filters": ["request_id"]}
+    },
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
     "loggers": {
         "django.request": {"handlers": ["console"], "level": "WARNING", "propagate": False},

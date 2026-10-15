@@ -19,13 +19,20 @@ class NotificationViewSet(TenantAPIMixin, viewsets.ReadOnlyModelViewSet):
     """The caller's own notifications in the active organization."""
 
     serializer_class = NotificationSerializer
-    permission_map = {"list": "__member__", "retrieve": "__member__", "read": "__member__", "read_all": "__member__"}
+    permission_map = {
+        "list": "__member__",
+        "retrieve": "__member__",
+        "read": "__member__",
+        "read_all": "__member__",
+    }
     filterset_fields: list = []
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return Notification.objects.none()
-        return Notification.objects.for_organization(self.request.organization).filter(recipient=self.request.user)
+        return Notification.objects.for_organization(self.request.organization).filter(
+            recipient=self.request.user
+        )
 
     @action(detail=True, methods=["post"])
     def read(self, request, pk=None):

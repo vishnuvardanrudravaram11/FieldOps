@@ -1,4 +1,5 @@
 """View mixins that enforce the authorization decision on the server for HTML views."""
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
