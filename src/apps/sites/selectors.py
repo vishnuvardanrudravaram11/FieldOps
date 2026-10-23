@@ -1,6 +1,7 @@
 """M01 read side. Every function restricts data to the organization AND to the sites the membership may reach
 for the given permission (site scope), so list endpoints cannot leak and detail lookups return 404 for
 out-of-scope ids (same answer as for absent ids)."""
+
 from __future__ import annotations
 
 import uuid
@@ -71,7 +72,9 @@ def site_list(membership, org, params):
     if assets_installed():
         from apps.assets.workflow import TERMINAL_STATES
 
-        qs = qs.annotate(asset_count=Count("assets", filter=~Q(assets__status__in=TERMINAL_STATES), distinct=True))
+        qs = qs.annotate(
+            asset_count=Count("assets", filter=~Q(assets__status__in=TERMINAL_STATES), distinct=True)
+        )
     else:
         qs = qs.annotate(asset_count=Value(0, output_field=IntegerField()))
     return qs.order_by("code")
@@ -123,7 +126,9 @@ def zone_tree(site: Site) -> list[dict]:
     if assets_installed():
         from apps.assets.workflow import TERMINAL_STATES
 
-        qs = qs.annotate(asset_count=Count("assets", filter=~Q(assets__status__in=TERMINAL_STATES), distinct=True))
+        qs = qs.annotate(
+            asset_count=Count("assets", filter=~Q(assets__status__in=TERMINAL_STATES), distinct=True)
+        )
     else:
         qs = qs.annotate(asset_count=Value(0, output_field=IntegerField()))
     zones = list(qs.order_by("zone_type", "name"))
@@ -156,8 +161,10 @@ def flatten_tree(roots: list[dict]) -> list[dict]:
 
 def calendars_for(membership, org, code: str = "calendar.view"):
     scope = rbac.site_scope(membership, code)
-    return scope.filter(OperatingCalendar.objects.for_organization(org).select_related("site")
-                        .prefetch_related("holidays"), "site_id")
+    return scope.filter(
+        OperatingCalendar.objects.for_organization(org).select_related("site").prefetch_related("holidays"),
+        "site_id",
+    )
 
 
 def get_calendar(membership, org, pk, code: str = "calendar.view") -> OperatingCalendar:
@@ -166,8 +173,9 @@ def get_calendar(membership, org, pk, code: str = "calendar.view") -> OperatingC
 
 def holidays_for(membership, org):
     scope = rbac.site_scope(membership, "calendar.view")
-    return scope.filter(CalendarHoliday.objects.for_organization(org).select_related("calendar__site"),
-                        "calendar__site_id")
+    return scope.filter(
+        CalendarHoliday.objects.for_organization(org).select_related("calendar__site"), "calendar__site_id"
+    )
 
 
 def contacts_for(membership, org):

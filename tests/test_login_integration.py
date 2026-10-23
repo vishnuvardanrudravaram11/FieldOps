@@ -4,6 +4,7 @@ These tests deliberately mimic a real browser: CSRF enforcement ON, GET-then-POS
 the production password hasher (PBKDF2, not the fast test hasher), a Super Admin created through the real
 management command, several users sharing one IP, and an Nginx-style proxy in front.
 """
+
 import re
 
 import pytest
@@ -35,7 +36,9 @@ def login(client, email, password, **extra):
     return client.post(
         "/accounts/login/",
         {"csrfmiddlewaretoken": token, "username": email, "password": password},
-        HTTP_ORIGIN="http://localhost", HTTP_REFERER="http://localhost/accounts/login/", **extra,
+        HTTP_ORIGIN="http://localhost",
+        HTTP_REFERER="http://localhost/accounts/login/",
+        **extra,
     )
 
 
@@ -43,8 +46,11 @@ def make_admin(monkeypatch, email="superadmin@fieldops.test", password=PW):
     monkeypatch.setenv("FIELDOPS_ADMIN_PASSWORD", password)
     user, _ = User.objects.get_or_create(
         email=email,
-        defaults={"full_name": "Platform Admin", "is_staff": True, "is_superuser": True},
+        defaults={"full_name": "Platform Admin", "is_platform_admin": True, "is_staff": False, "is_superuser": False},
     )
+    user.is_platform_admin = True
+    user.is_staff = False
+    user.is_superuser = False
     user.set_password(password)
     user.save()
     return user
@@ -55,7 +61,11 @@ def make_admin(monkeypatch, email="superadmin@fieldops.test", password=PW):
 
 def test_command_created_super_admin_logs_in_via_browser_flow(monkeypatch):
     user = make_admin(monkeypatch)
-    assert (user.is_platform_admin, user.is_staff, user.is_superuser) == (True, False, False)  # design preserved
+    assert (user.is_platform_admin, user.is_staff, user.is_superuser) == (
+        True,
+        False,
+        False,
+    )  # design preserved
     c = browser()
     r = login(c, "superadmin@fieldops.test", PW)
     assert r.status_code == 302 and r["Location"] == "/app/"
@@ -116,7 +126,9 @@ def test_one_users_failures_do_not_lock_other_users_on_same_ip(monkeypatch):
         login(attacker, "superadmin@fieldops.test", f"wrong-password-{i}")
     assert login(browser(), "superadmin@fieldops.test", PW).status_code == 429  # target is locked...
     assert login(browser(), "second.admin@fieldops.test", OTHER_PW).status_code == 302  # ...bystander is not
-    assert login(browser(), "never.registered@fieldops.test", "x").status_code == 200  # unknown users just fail
+    assert (
+        login(browser(), "never.registered@fieldops.test", "x").status_code == 200
+    )  # unknown users just fail
 
 
 def test_lockout_is_per_username_and_ip_combination(monkeypatch):
@@ -129,8 +141,15 @@ def test_lockout_is_per_username_and_ip_combination(monkeypatch):
 
 def test_case_variants_cannot_dodge_the_failure_counter(monkeypatch):
     make_admin(monkeypatch)
-    for i, variant in enumerate(["SUPERADMIN@fieldops.test", "Superadmin@fieldops.test", "superadmin@FIELDOPS.test",
-                                 "superadmin@fieldops.TEST", "SuperAdmin@fieldops.test"]):
+    for i, variant in enumerate(
+        [
+            "SUPERADMIN@fieldops.test",
+            "Superadmin@fieldops.test",
+            "superadmin@FIELDOPS.test",
+            "superadmin@fieldops.TEST",
+            "SuperAdmin@fieldops.test",
+        ]
+    ):
         login(browser(), variant, f"wrong-password-{i}")
     assert login(browser(), "superadmin@fieldops.test", PW).status_code == 429
 
@@ -143,11 +162,26 @@ def test_behind_trusted_proxy_throttling_uses_the_real_client_ip(monkeypatch, se
     make_admin(monkeypatch)
     proxy = {"REMOTE_ADDR": "172.21.0.7"}  # what Django sees: the Nginx container
     for i in range(5):
-        login(browser(**proxy), "superadmin@fieldops.test", f"wrong-password-{i}", HTTP_X_FORWARDED_FOR="203.0.113.10")
+        login(
+            browser(**proxy),
+            "superadmin@fieldops.test",
+            f"wrong-password-{i}",
+            HTTP_X_FORWARDED_FOR="203.0.113.10",
+        )
     assert AccessAttempt.objects.get().ip_address == "203.0.113.10"
-    assert login(browser(**proxy), "superadmin@fieldops.test", PW, HTTP_X_FORWARDED_FOR="203.0.113.10").status_code == 429
+    assert (
+        login(
+            browser(**proxy), "superadmin@fieldops.test", PW, HTTP_X_FORWARDED_FOR="203.0.113.10"
+        ).status_code
+        == 429
+    )
     # a different real client behind the same proxy is unaffected
-    assert login(browser(**proxy), "superadmin@fieldops.test", PW, HTTP_X_FORWARDED_FOR="203.0.113.20").status_code == 302
+    assert (
+        login(
+            browser(**proxy), "superadmin@fieldops.test", PW, HTTP_X_FORWARDED_FOR="203.0.113.20"
+        ).status_code
+        == 302
+    )
 
 
 def test_client_supplied_forwarded_for_cannot_spoof_identity(settings):
@@ -190,7 +224,6 @@ def test_tenant_owner_lands_in_org_and_cannot_reach_platform(owner_a):
     assert c.get("/app/").status_code == 200
     assert c.get("/platform/organizations/").status_code in (403, 404)
     assert (owner_a.is_platform_admin, owner_a.is_staff, owner_a.is_superuser) == (False, False, False)
-
 
 
 # --- diagnostic tool -------------------------------------------------------------------------------------------

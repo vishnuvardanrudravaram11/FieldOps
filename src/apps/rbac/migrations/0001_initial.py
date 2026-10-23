@@ -7,82 +7,142 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('tenancy', '0001_initial'),
+        ("tenancy", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Permission',
+            name="Permission",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('code', models.CharField(max_length=80, unique=True)),
-                ('module', models.CharField(db_index=True, max_length=40)),
-                ('description', models.CharField(max_length=200)),
+                (
+                    "id",
+                    models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("code", models.CharField(max_length=80, unique=True)),
+                ("module", models.CharField(db_index=True, max_length=40)),
+                ("description", models.CharField(max_length=200)),
             ],
             options={
-                'ordering': ['module', 'code'],
+                "ordering": ["module", "code"],
             },
         ),
         migrations.CreateModel(
-            name='Role',
+            name="Role",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=80)),
-                ('description', models.CharField(blank=True, max_length=300)),
-                ('system_key', models.CharField(blank=True, db_index=True, max_length=40)),
-                ('is_owner', models.BooleanField(default=False, help_text='Implicitly holds every permission.')),
-                ('organization', models.ForeignKey(editable=False, on_delete=django.db.models.deletion.PROTECT, related_name='+', to='tenancy.organization')),
+                (
+                    "id",
+                    models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=80)),
+                ("description", models.CharField(blank=True, max_length=300)),
+                ("system_key", models.CharField(blank=True, db_index=True, max_length=40)),
+                (
+                    "is_owner",
+                    models.BooleanField(default=False, help_text="Implicitly holds every permission."),
+                ),
+                (
+                    "organization",
+                    models.ForeignKey(
+                        editable=False,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="+",
+                        to="tenancy.organization",
+                    ),
+                ),
             ],
             options={
-                'ordering': ['name'],
+                "ordering": ["name"],
             },
         ),
         migrations.CreateModel(
-            name='RolePermission',
+            name="RolePermission",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('permission', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='+', to='rbac.permission')),
-                ('role', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='role_permissions', to='rbac.role')),
+                (
+                    "id",
+                    models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "permission",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT, related_name="+", to="rbac.permission"
+                    ),
+                ),
+                (
+                    "role",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="role_permissions",
+                        to="rbac.role",
+                    ),
+                ),
             ],
         ),
         migrations.AddField(
-            model_name='role',
-            name='permissions',
-            field=models.ManyToManyField(related_name='roles', through='rbac.RolePermission', to='rbac.permission'),
+            model_name="role",
+            name="permissions",
+            field=models.ManyToManyField(
+                related_name="roles", through="rbac.RolePermission", to="rbac.permission"
+            ),
         ),
         migrations.CreateModel(
-            name='MembershipRole',
+            name="MembershipRole",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('membership', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='membership_roles', to='tenancy.membership')),
-                ('role', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='membership_roles', to='rbac.role')),
+                (
+                    "id",
+                    models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "membership",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="membership_roles",
+                        to="tenancy.membership",
+                    ),
+                ),
+                (
+                    "role",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="membership_roles",
+                        to="rbac.role",
+                    ),
+                ),
             ],
             options={
-                'constraints': [models.UniqueConstraint(fields=('membership', 'role'), name='uniq_membership_role')],
+                "constraints": [
+                    models.UniqueConstraint(fields=("membership", "role"), name="uniq_membership_role")
+                ],
             },
         ),
         migrations.AddConstraint(
-            model_name='rolepermission',
-            constraint=models.UniqueConstraint(fields=('role', 'permission'), name='uniq_role_permission'),
+            model_name="rolepermission",
+            constraint=models.UniqueConstraint(fields=("role", "permission"), name="uniq_role_permission"),
         ),
         migrations.AddConstraint(
-            model_name='role',
-            constraint=models.UniqueConstraint(django.db.models.functions.text.Lower('name'), models.F('organization'), name='uniq_role_name_per_org'),
+            model_name="role",
+            constraint=models.UniqueConstraint(
+                django.db.models.functions.text.Lower("name"),
+                models.F("organization"),
+                name="uniq_role_name_per_org",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='role',
-            constraint=models.UniqueConstraint(condition=models.Q(('system_key', ''), _negated=True), fields=('organization', 'system_key'), name='uniq_system_role_per_org'),
+            model_name="role",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("system_key", ""), _negated=True),
+                fields=("organization", "system_key"),
+                name="uniq_system_role_per_org",
+            ),
         ),
     ]

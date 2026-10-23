@@ -40,7 +40,8 @@ class TenantContextMiddleware:
         request.active_memberships = list(selectors.active_memberships(user))
         try:
             membership = selectors.resolve_membership(
-                user, session_org_id=request.session.get(selectors.SESSION_KEY),
+                user,
+                session_org_id=request.session.get(selectors.SESSION_KEY),
                 candidates=request.active_memberships,
             )
         except PermissionDenied as exc:

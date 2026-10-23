@@ -11,8 +11,20 @@ from apps.ui.mixins import TenantPermissionMixin
 
 from . import evidence, exports, selectors, services
 
-FILTER_KEYS = ("action", "q", "actor", "entity_type", "entity_id", "request_id", "site", "category", "asset",
-               "work_order", "from", "to")
+FILTER_KEYS = (
+    "action",
+    "q",
+    "actor",
+    "entity_type",
+    "entity_id",
+    "request_id",
+    "site",
+    "category",
+    "asset",
+    "work_order",
+    "from",
+    "to",
+)
 
 
 def export_logs(membership, org):
@@ -42,11 +54,21 @@ class AuditListView(TenantPermissionMixin, View):
         sites = {s.pk: s.code for s in Site.objects.for_organization(org)}
         for e in page:
             e.site_code = sites.get(e.site_id, "")
-        return render(request, "audit/list.html", {
-            "page": page, "filters": request.GET, "categories": [(k, v[0]) for k, v in selectors.CATEGORIES.items()],
-            "entity_types": selectors.entity_types(base), "sites": sorted(sites.items(), key=lambda kv: kv[1]),
-            "can_export": rbac.has_permission_anywhere(m, "audit.export"), "error": error,
-            "query": request.GET.urlencode(), "total_hint": exports.EXPORT_LIMIT})
+        return render(
+            request,
+            "audit/list.html",
+            {
+                "page": page,
+                "filters": request.GET,
+                "categories": [(k, v[0]) for k, v in selectors.CATEGORIES.items()],
+                "entity_types": selectors.entity_types(base),
+                "sites": sorted(sites.items(), key=lambda kv: kv[1]),
+                "can_export": rbac.has_permission_anywhere(m, "audit.export"),
+                "error": error,
+                "query": request.GET.urlencode(),
+                "total_hint": exports.EXPORT_LIMIT,
+            },
+        )
 
 
 class AuditDetailView(TenantPermissionMixin, View):
@@ -56,8 +78,11 @@ class AuditDetailView(TenantPermissionMixin, View):
         entry = selectors.visible_logs(request.membership, request.organization).filter(pk=pk).first()
         if entry is None:
             raise Http404
-        site = Site.objects.for_organization(request.organization).filter(pk=entry.site_id).first() \
-            if entry.site_id else None
+        site = (
+            Site.objects.for_organization(request.organization).filter(pk=entry.site_id).first()
+            if entry.site_id
+            else None
+        )
         return render(request, "audit/detail.html", {"entry": entry, "site": site})
 
 
@@ -67,8 +92,11 @@ class ReportsView(TenantPermissionMixin, View):
     required_permission = "audit.view"
 
     def get(self, request):
-        return render(request, "audit/reports.html", {
-            "categories": [(k, v[0], v[1]) for k, v in selectors.CATEGORIES.items()]})
+        return render(
+            request,
+            "audit/reports.html",
+            {"categories": [(k, v[0], v[1]) for k, v in selectors.CATEGORIES.items()]},
+        )
 
 
 class EvidencePackageView(TenantPermissionMixin, View):
@@ -79,7 +107,9 @@ class EvidencePackageView(TenantPermissionMixin, View):
 
     def get(self, request, pk):
         try:
-            pkg = evidence.build(request.membership, request.organization, pk, actor=request.user, request=request)
+            pkg = evidence.build(
+                request.membership, request.organization, pk, actor=request.user, request=request
+            )
         except NotFound as exc:
             raise Http404 from exc
         except PermissionDenied:
@@ -104,11 +134,16 @@ class ExportView(TenantPermissionMixin, View):
         except DomainError as exc:
             return HttpResponse(exc.message, status=400)
         params = clean_params(request.GET)
-        result = exports.build(fmt, qs, org, actor=request.user,
-                               filters_text=", ".join(f"{k}={v}" for k, v in params.items()))
-        services.record("audit.exported", actor=request.user, organization=org, request=request,
-                        metadata={"format": fmt, "rows": result.rows, "truncated": result.truncated,
-                                  "filters": params})
+        result = exports.build(
+            fmt, qs, org, actor=request.user, filters_text=", ".join(f"{k}={v}" for k, v in params.items())
+        )
+        services.record(
+            "audit.exported",
+            actor=request.user,
+            organization=org,
+            request=request,
+            metadata={"format": fmt, "rows": result.rows, "truncated": result.truncated, "filters": params},
+        )
         resp = HttpResponse(result.body, content_type=result.content_type)
         resp["Content-Disposition"] = f'attachment; filename="{result.filename}"'
         resp["Cache-Control"] = "private, no-store"

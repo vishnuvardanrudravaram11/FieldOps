@@ -28,15 +28,29 @@ class Command(BaseCommand):
             out(f"2. is_active              : {user.is_active}")
             out(f"3. has usable password    : {user.has_usable_password()}")
             out(f"4. password matches stored: {user.check_password(pw)}  (typed length {len(pw)})")
-            out(f"   flags                  : platform_admin={user.is_platform_admin} staff={user.is_staff} superuser={user.is_superuser}")
+            out(
+                f"   flags                  : platform_admin={user.is_platform_admin} staff={user.is_staff} superuser={user.is_superuser}"
+            )
         request = RequestFactory().post("/accounts/login/", {"username": email}, REMOTE_ADDR="127.0.0.1")
         request.session = {}
         out(f"5. axes identity          : username={axes_username(request)!r} ip={client_ip(request)!r}")
         result = authenticate(request, username=email.strip().lower(), password=pw)
         out(f"6. authenticate() result  : {'OK -> ' + result.email if result else 'REJECTED'}")
         if result:
-            out(self.style.SUCCESS("Backend accepts these credentials. If the browser still rejects them, the browser is sending different text (autofill / typo / layout)."))
+            out(
+                self.style.SUCCESS(
+                    "Backend accepts these credentials. If the browser still rejects them, the browser is sending different text (autofill / typo / layout)."
+                )
+            )
         elif user and not user.check_password(pw):
-            out(self.style.ERROR("The stored password differs from what you typed. Reset with: python manage.py changepassword <email>"))
+            out(
+                self.style.ERROR(
+                    "The stored password differs from what you typed. Reset with: python manage.py changepassword <email>"
+                )
+            )
         else:
-            out(self.style.ERROR("Rejected by Axes lockout, inactive account, or unknown user (see lines above)."))
+            out(
+                self.style.ERROR(
+                    "Rejected by Axes lockout, inactive account, or unknown user (see lines above)."
+                )
+            )

@@ -1,4 +1,5 @@
 """Human-readable, never-repeating document numbers per organization (INC-000001, WO-000001)."""
+
 from django.db import IntegrityError, transaction
 from django.db.models import F
 

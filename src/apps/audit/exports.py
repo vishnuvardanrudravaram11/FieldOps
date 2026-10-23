@@ -1,6 +1,7 @@
 """Audit evidence exports (CSV / XLSX / PDF). They read the SAME queryset the viewer shows (organization + site
 scope + filters), cap at ``EXPORT_LIMIT`` rows (newest first; the file says when it is truncated) and are themselves
 audited (``audit.exported``). Spreadsheet cells that could be interpreted as formulas are neutralised."""
+
 from __future__ import annotations
 
 import csv
@@ -12,11 +13,25 @@ from dataclasses import dataclass
 from django.utils import timezone
 
 EXPORT_LIMIT = 10000
-FORMATS = {"csv": ("text/csv; charset=utf-8", "csv"),
-           "xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
-           "pdf": ("application/pdf", "pdf")}
-COLUMNS = ["When (UTC)", "Actor", "Action", "Entity type", "Entity id", "Entity", "Site", "Before", "After",
-           "Details", "IP address", "Request id"]
+FORMATS = {
+    "csv": ("text/csv; charset=utf-8", "csv"),
+    "xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
+    "pdf": ("application/pdf", "pdf"),
+}
+COLUMNS = [
+    "When (UTC)",
+    "Actor",
+    "Action",
+    "Entity type",
+    "Entity id",
+    "Entity",
+    "Site",
+    "Before",
+    "After",
+    "Details",
+    "IP address",
+    "Request id",
+]
 
 
 @dataclass
@@ -34,7 +49,9 @@ def _safe(value) -> str:
 
 
 def _json(value) -> str:
-    return "" if value in (None, {}, []) else json.dumps(value, sort_keys=True, default=str, ensure_ascii=False)
+    return (
+        "" if value in (None, {}, []) else json.dumps(value, sort_keys=True, default=str, ensure_ascii=False)
+    )
 
 
 def rows_for(qs, org):
@@ -42,13 +59,26 @@ def rows_for(qs, org):
     from apps.sites.models import Site
 
     sites = {s.pk: s.code for s in Site.objects.for_organization(org)}
-    items = list(qs.order_by("-occurred_at", "-id")[:EXPORT_LIMIT + 1])
+    items = list(qs.order_by("-occurred_at", "-id")[: EXPORT_LIMIT + 1])
     truncated = len(items) > EXPORT_LIMIT
     out = []
     for e in items[:EXPORT_LIMIT]:
-        out.append([e.occurred_at.astimezone(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S"), e.actor_email or "system",
-                    e.action, e.target_type, e.target_id, e.target_repr, sites.get(e.site_id, "") if e.site_id else "",
-                    _json(e.before), _json(e.after), _json(e.metadata), e.ip_address or "", e.request_id])
+        out.append(
+            [
+                e.occurred_at.astimezone(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S"),
+                e.actor_email or "system",
+                e.action,
+                e.target_type,
+                e.target_id,
+                e.target_repr,
+                sites.get(e.site_id, "") if e.site_id else "",
+                _json(e.before),
+                _json(e.after),
+                _json(e.metadata),
+                e.ip_address or "",
+                e.request_id,
+            ]
+        )
     return out, truncated
 
 
@@ -59,9 +89,17 @@ def build(fmt: str, qs, org, *, actor, filters_text: str = "") -> Export:
     stamp = timezone.now().strftime("%Y%m%d-%H%M%S")
     ctype, ext = FORMATS[fmt]
     name = f"audit-{org.slug}-{stamp}.{ext}"
-    note = f"Showing the newest {EXPORT_LIMIT} rows only; narrow the filters to export the rest." if truncated else ""
-    meta = [f"Organization: {org.name}", f"Generated: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')} UTC by "
-            f"{getattr(actor, 'email', '')}", f"Rows: {len(rows)}", f"Filters: {filters_text or 'none'}"]
+    note = (
+        f"Showing the newest {EXPORT_LIMIT} rows only; narrow the filters to export the rest."
+        if truncated
+        else ""
+    )
+    meta = [
+        f"Organization: {org.name}",
+        f"Generated: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')} UTC by {getattr(actor, 'email', '')}",
+        f"Rows: {len(rows)}",
+        f"Filters: {filters_text or 'none'}",
+    ]
     if fmt == "csv":
         buf = io.StringIO()
         w = csv.writer(buf)
@@ -108,8 +146,15 @@ def _pdf(rows, meta, note) -> bytes:
     styles = getSampleStyleSheet()
     small = styles["BodyText"].clone("small", fontSize=7, leading=8.5)
     out = io.BytesIO()
-    doc = SimpleDocTemplate(out, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=24,
-                            title="Audit evidence")
+    doc = SimpleDocTemplate(
+        out,
+        pagesize=landscape(A4),
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=24,
+        bottomMargin=24,
+        title="Audit evidence",
+    )
     story = [Paragraph("Audit evidence", styles["Title"])]
     story += [Paragraph(line.replace("&", "&amp;").replace("<", "&lt;"), styles["Normal"]) for line in meta]
     if note:
@@ -121,14 +166,34 @@ def _pdf(rows, meta, note) -> bytes:
         text = text if len(text) <= n else text[: n - 1] + "…"
         return Paragraph(text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), small)
 
-    data = [[Paragraph(f"<b>{h}</b>", small) for h in ("When (UTC)", "Actor", "Action", "Entity", "Site", "Change")]]
+    data = [
+        [
+            Paragraph(f"<b>{h}</b>", small)
+            for h in ("When (UTC)", "Actor", "Action", "Entity", "Site", "Change")
+        ]
+    ]
     for r in rows:
         change = r[8] or r[9]
-        data.append([cell(r[0], 20), cell(r[1], 40), cell(r[2], 40), cell(f"{r[3]} {r[5]}", 70), cell(r[6], 10),
-                     cell(change, 110)])
+        data.append(
+            [
+                cell(r[0], 20),
+                cell(r[1], 40),
+                cell(r[2], 40),
+                cell(f"{r[3]} {r[5]}", 70),
+                cell(r[6], 10),
+                cell(change, 110),
+            ]
+        )
     table = Table(data, repeatRows=1, colWidths=[78, 120, 110, 190, 36, 280])
-    table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey), ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                               ("GRID", (0, 0), (-1, -1), 0.25, colors.grey)]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ]
+        )
+    )
     story.append(table)
     doc.build(story)
     return out.getvalue()

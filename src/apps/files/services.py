@@ -12,8 +12,9 @@ from apps.core.uploads import validate_upload
 from .models import Attachment
 
 
-def attach(uploaded, *, target, organization, user, description: str = "", read_permission: str = "",
-           request=None) -> Attachment:
+def attach(
+    uploaded, *, target, organization, user, description: str = "", read_permission: str = "", request=None
+) -> Attachment:
     """Validates and stores an upload against a tenant-owned ``target`` object.
 
     The target must belong to ``organization`` (checked here so a module cannot attach across tenants)."""
@@ -31,13 +32,23 @@ def attach(uploaded, *, target, organization, user, description: str = "", read_
         organization=organization,
         content_type=ContentType.objects.get_for_model(target),
         object_id=str(target.pk),
-        original_name=meta["name"], mime_type=meta["mime"], size=meta["size"], sha256=digest.hexdigest(),
-        description=description[:200], read_permission=read_permission, uploaded_by=user,
+        original_name=meta["name"],
+        mime_type=meta["mime"],
+        size=meta["size"],
+        sha256=digest.hexdigest(),
+        description=description[:200],
+        read_permission=read_permission,
+        uploaded_by=user,
     )
     att.file.save(meta["name"], uploaded, save=False)
     att.save()
-    audit.record("file.uploaded", actor=user, organization=organization, target=att,
-                 target_repr=att.original_name, metadata={"size": att.size, "sha256": att.sha256,
-                                                          "for": f"{att.content_type.model}:{att.object_id}"},
-                 request=request)
+    audit.record(
+        "file.uploaded",
+        actor=user,
+        organization=organization,
+        target=att,
+        target_repr=att.original_name,
+        metadata={"size": att.size, "sha256": att.sha256, "for": f"{att.content_type.model}:{att.object_id}"},
+        request=request,
+    )
     return att

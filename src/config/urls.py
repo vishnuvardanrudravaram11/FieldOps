@@ -31,8 +31,11 @@ router.register("site-contacts", ContactViewSet, basename="site-contact")
 
 api_v1 = [
     path("auth/", include("apps.accounts.api_urls")),
-    path("organization/", OrganizationViewSet.as_view({"get": "retrieve", "patch": "partial_update"}),
-         name="organization"),
+    path(
+        "organization/",
+        OrganizationViewSet.as_view({"get": "retrieve", "patch": "partial_update"}),
+        name="organization",
+    ),
     path("", include(router.urls)),
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),
@@ -41,6 +44,7 @@ api_v1 = [
 urlpatterns = [
     path("health/live/", health.live, name="health_live"),
     path("health/ready/", health.ready, name="health_ready"),
+    path("platform/", include("apps.tenancy.platform_urls")),
     path("api/v1/", include(api_v1)),
     path("accounts/", include("apps.accounts.urls")),
     path("app/", include("apps.tenancy.urls")),

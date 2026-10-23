@@ -17,7 +17,8 @@ class OrganizationForm(forms.Form):
 def _role_field(org):
     return forms.ModelMultipleChoiceField(
         queryset=Role.objects.for_organization(org).order_by("name"),
-        widget=forms.CheckboxSelectMultiple, label="Roles",
+        widget=forms.CheckboxSelectMultiple,
+        label="Roles",
     )
 
 
@@ -25,8 +26,10 @@ def _site_field(org, *, required=False):
     from apps.sites.models import Site
 
     return forms.ModelMultipleChoiceField(
-        queryset=Site.objects.for_organization(org).order_by("code"), required=required,
-        widget=forms.CheckboxSelectMultiple, label="Limit to sites",
+        queryset=Site.objects.for_organization(org).order_by("code"),
+        required=required,
+        widget=forms.CheckboxSelectMultiple,
+        label="Limit to sites",
         help_text="Leave empty for organization-wide access. Selected sites limit the chosen roles to those sites.",
     )
 

@@ -8,37 +8,73 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('contenttypes', '0002_remove_content_type_name'),
-        ('tenancy', '0001_initial'),
+        ("contenttypes", "0002_remove_content_type_name"),
+        ("tenancy", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Attachment',
+            name="Attachment",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('object_id', models.CharField(max_length=64)),
-                ('file', models.FileField(max_length=300, upload_to=apps.core.uploads.tenant_upload_path)),
-                ('original_name', models.CharField(max_length=150)),
-                ('mime_type', models.CharField(max_length=100)),
-                ('size', models.PositiveBigIntegerField()),
-                ('sha256', models.CharField(max_length=64)),
-                ('description', models.CharField(blank=True, max_length=200)),
-                ('read_permission', models.CharField(blank=True, help_text='Permission code required to download; blank = any active member of the organization.', max_length=80)),
-                ('content_type', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='+', to='contenttypes.contenttype')),
-                ('organization', models.ForeignKey(editable=False, on_delete=django.db.models.deletion.PROTECT, related_name='+', to='tenancy.organization')),
-                ('uploaded_by', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='+', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("object_id", models.CharField(max_length=64)),
+                ("file", models.FileField(max_length=300, upload_to=apps.core.uploads.tenant_upload_path)),
+                ("original_name", models.CharField(max_length=150)),
+                ("mime_type", models.CharField(max_length=100)),
+                ("size", models.PositiveBigIntegerField()),
+                ("sha256", models.CharField(max_length=64)),
+                ("description", models.CharField(blank=True, max_length=200)),
+                (
+                    "read_permission",
+                    models.CharField(
+                        blank=True,
+                        help_text="Permission code required to download; blank = any active member of the organization.",
+                        max_length=80,
+                    ),
+                ),
+                (
+                    "content_type",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="+",
+                        to="contenttypes.contenttype",
+                    ),
+                ),
+                (
+                    "organization",
+                    models.ForeignKey(
+                        editable=False,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="+",
+                        to="tenancy.organization",
+                    ),
+                ),
+                (
+                    "uploaded_by",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="+",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['organization', 'content_type', 'object_id'], name='files_attac_organiz_e8e1ce_idx')],
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["organization", "content_type", "object_id"],
+                        name="files_attac_organiz_e8e1ce_idx",
+                    )
+                ],
             },
         ),
     ]

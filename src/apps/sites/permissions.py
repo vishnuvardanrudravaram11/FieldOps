@@ -1,4 +1,5 @@
 """M01 permissions. ``site_scoped`` ones can be granted for specific sites (rbac.MembershipRole.site)."""
+
 from apps.rbac.catalog import register
 
 register("site", "site.view", "View sites", site_scoped=True)

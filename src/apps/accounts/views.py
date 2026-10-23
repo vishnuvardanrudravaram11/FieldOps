@@ -29,8 +29,13 @@ class ActivateView(auth_views.PasswordResetConfirmView):
     def form_valid(self, form):
         response = super().form_valid(form)
         services.activate_pending_memberships(form.user, request=self.request)
-        audit.record("auth.password_set", actor=form.user, target=form.user, target_repr=form.user.email,
-                     request=self.request)
+        audit.record(
+            "auth.password_set",
+            actor=form.user,
+            target=form.user,
+            target_repr=form.user.email,
+            request=self.request,
+        )
         messages.success(self.request, "Your password is set. Sign in to continue.")
         return response
 
@@ -48,8 +53,13 @@ class PasswordResetConfirmView(auth_views.PasswordResetConfirmView):
 
     def form_valid(self, form):
         response = super().form_valid(form)
-        audit.record("auth.password_reset", actor=form.user, target=form.user, target_repr=form.user.email,
-                     request=self.request)
+        audit.record(
+            "auth.password_reset",
+            actor=form.user,
+            target=form.user,
+            target_repr=form.user.email,
+            request=self.request,
+        )
         messages.success(self.request, "Password updated. Sign in with your new password.")
         return response
 
@@ -60,8 +70,13 @@ class PasswordChangeView(auth_views.PasswordChangeView):
 
     def form_valid(self, form):
         response = super().form_valid(form)
-        audit.record("auth.password_changed", actor=self.request.user, target=self.request.user,
-                     target_repr=self.request.user.email, request=self.request)
+        audit.record(
+            "auth.password_changed",
+            actor=self.request.user,
+            target=self.request.user,
+            target_repr=self.request.user.email,
+            request=self.request,
+        )
         messages.success(self.request, "Password changed.")
         return response
 
@@ -72,10 +87,15 @@ def profile(request):
     if request.method == "POST" and form.is_valid():
         before = {"full_name": request.user.full_name, "phone": request.user.phone}
         form.save()
-        audit.record("user.profile_updated", actor=request.user, target=request.user,
-                     target_repr=request.user.email, before=before,
-                     after={"full_name": form.instance.full_name, "phone": form.instance.phone},
-                     request=request)
+        audit.record(
+            "user.profile_updated",
+            actor=request.user,
+            target=request.user,
+            target_repr=request.user.email,
+            before=before,
+            after={"full_name": form.instance.full_name, "phone": form.instance.phone},
+            request=request,
+        )
         messages.success(request, "Profile updated.")
         return redirect("accounts:profile")
     return render(request, "accounts/profile.html", {"form": form})

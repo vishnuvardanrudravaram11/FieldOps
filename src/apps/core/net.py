@@ -4,6 +4,7 @@ Why this exists (incident 2026-10-03): behind Nginx every request has REMOTE_ADD
 throttling treated all users as one client. ``client_ip`` honours X-Forwarded-For ONLY for the number of trusted
 proxy hops configured in ``TRUSTED_PROXY_COUNT`` (0 = ignore the header entirely, so it cannot be spoofed).
 """
+
 import ipaddress
 
 from django.conf import settings

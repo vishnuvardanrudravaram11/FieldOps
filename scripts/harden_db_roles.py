@@ -12,13 +12,16 @@ Idempotent, never drops anything, never touches data. NOT executed by CI or by t
 production by an operator (``SUPABASE_ADMIN_DATABASE_URL``, ``FIELDOPS_MIGRATOR_PASSWORD``), then point
 ``DATABASE_URL`` at ``fieldops_app`` for web/worker and at ``fieldops_migrator`` for the migrate step only.
 """
+
 from __future__ import annotations
 
 import os
 import sys
 
 
-def grant_statements(schema: str = "fieldops", owner: str = "fieldops_migrator", app: str = "fieldops_app") -> list[str]:
+def grant_statements(
+    schema: str = "fieldops", owner: str = "fieldops_migrator", app: str = "fieldops_app"
+) -> list[str]:
     q = lambda ident: '"' + ident.replace('"', '""') + '"'  # noqa: E731
     s, o, a = q(schema), q(owner), q(app)
     return [
@@ -49,7 +52,11 @@ def main() -> None:
         sys.exit("Set SUPABASE_ADMIN_DATABASE_URL and FIELDOPS_MIGRATOR_PASSWORD.")
     with psycopg.connect(admin_url, autocommit=True) as conn:
         if not conn.execute("SELECT 1 FROM pg_roles WHERE rolname = 'fieldops_migrator'").fetchone():
-            conn.execute(sql.SQL("CREATE ROLE fieldops_migrator LOGIN NOINHERIT PASSWORD {}").format(sql.Literal(mig_pw)))
+            conn.execute(
+                sql.SQL("CREATE ROLE fieldops_migrator LOGIN NOINHERIT PASSWORD {}").format(
+                    sql.Literal(mig_pw)
+                )
+            )
             print("created role fieldops_migrator")
         conn.execute("GRANT fieldops_migrator TO CURRENT_USER")
         conn.execute("GRANT fieldops_app TO CURRENT_USER")
@@ -57,16 +64,22 @@ def main() -> None:
         conn.execute("ALTER SCHEMA fieldops OWNER TO fieldops_migrator")
         rows = conn.execute(
             "SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
-            "WHERE n.nspname = 'fieldops' AND c.relkind IN ('r', 'S', 'p', 'v')").fetchall()
+            "WHERE n.nspname = 'fieldops' AND c.relkind IN ('r', 'S', 'p', 'v')"
+        ).fetchall()
         for name, kind in rows:
             what = "SEQUENCE" if kind == "S" else "TABLE"
-            conn.execute(sql.SQL("ALTER {} fieldops.{} OWNER TO fieldops_migrator").format(
-                sql.SQL(what), sql.Identifier(name)))
+            conn.execute(
+                sql.SQL("ALTER {} fieldops.{} OWNER TO fieldops_migrator").format(
+                    sql.SQL(what), sql.Identifier(name)
+                )
+            )
         for stmt in grant_statements() + role_attribute_statements():
             conn.execute(stmt)
         conn.execute("ALTER ROLE fieldops_migrator SET search_path = fieldops")
         conn.execute("REVOKE ALL ON SCHEMA public FROM fieldops_app")
-        print("roles split: fieldops_migrator owns the schema, fieldops_app has DML only (no TRUNCATE / DDL / SUPERUSER / BYPASSRLS)")
+        print(
+            "roles split: fieldops_migrator owns the schema, fieldops_app has DML only (no TRUNCATE / DDL / SUPERUSER / BYPASSRLS)"
+        )
 
 
 if __name__ == "__main__":

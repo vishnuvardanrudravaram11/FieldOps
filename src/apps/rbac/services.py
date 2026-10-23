@@ -5,6 +5,7 @@ Authorization decision (docs/blueprint/06):
 ``has_permission`` answers the *permission* term for an already-verified, active membership; the tenant
 object term is enforced by ``TenantManager``; the state term by ``core.workflow``.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -41,8 +42,11 @@ def _template_codes(template) -> set[str]:
     codes = catalog.all_codes()
     matched = {c for c in codes if any(fnmatchcase(c, p) for p in template.patterns)}
     literal = {p for p in template.patterns if not any(ch in p for ch in "*?[")}
-    return {c for c in matched
-            if c in literal or not any(fnmatchcase(c, x) for x in getattr(template, "excludes", ()))}
+    return {
+        c
+        for c in matched
+        if c in literal or not any(fnmatchcase(c, x) for x in getattr(template, "excludes", ()))
+    }
 
 
 @transaction.atomic
@@ -54,8 +58,13 @@ def seed_system_roles(org) -> dict[str, Role]:
     for tpl in TEMPLATES:
         role = Role.objects.unscoped().filter(organization=org, system_key=tpl.key).first()
         if role is None:
-            role = Role(organization=org, name=tpl.name, description=tpl.description,
-                        system_key=tpl.key, is_owner=tpl.is_owner)
+            role = Role(
+                organization=org,
+                name=tpl.name,
+                description=tpl.description,
+                system_key=tpl.key,
+                is_owner=tpl.is_owner,
+            )
             role.save()
         have = set(role.role_permissions.values_list("permission__code", flat=True))
         for code in sorted(_template_codes(tpl) - have):
@@ -92,7 +101,8 @@ def membership_permissions(membership) -> frozenset[str]:
         perms: frozenset[str] = frozenset()
     else:
         roles = Role.objects.unscoped().filter(
-            organization_id=membership.organization_id, membership_roles__membership=membership,
+            organization_id=membership.organization_id,
+            membership_roles__membership=membership,
             membership_roles__site__isnull=True,
         )
         if roles.filter(is_owner=True).exists():
@@ -116,7 +126,9 @@ def site_permissions(membership) -> dict:
     if membership.is_active:
         scopable = catalog.site_scoped_codes()
         rows = MembershipRole.objects.filter(
-            membership=membership, site__isnull=False, role__is_owner=False,
+            membership=membership,
+            site__isnull=False,
+            role__is_owner=False,
             site__organization_id=membership.organization_id,
         ).values_list("site_id", "role__role_permissions__permission__code")
         acc: dict = {}
@@ -174,14 +186,17 @@ def site_scope(membership, code: str) -> SiteScope:
         return SiteScope(False)
     if has_permission(membership, code):
         return SiteScope(True)
-    return SiteScope(False, frozenset(
-        sid for sid, perms in site_permissions(membership).items() if code in perms))
+    return SiteScope(
+        False, frozenset(sid for sid, perms in site_permissions(membership).items() if code in perms)
+    )
 
 
 def is_owner(membership) -> bool:
     if membership is None or not membership.is_active:
         return False
-    return MembershipRole.objects.filter(membership=membership, role__is_owner=True, site__isnull=True).exists()
+    return MembershipRole.objects.filter(
+        membership=membership, role__is_owner=True, site__isnull=True
+    ).exists()
 
 
 # --- owner protection ----------------------------------------------------------------------
@@ -201,10 +216,14 @@ def owner_memberships(org, *, exclude=None):
 
 
 def assert_not_last_owner(membership):
-    if is_owner(membership) or MembershipRole.objects.filter(membership=membership, role__is_owner=True).exists():
+    if (
+        is_owner(membership)
+        or MembershipRole.objects.filter(membership=membership, role__is_owner=True).exists()
+    ):
         if not owner_memberships(membership.organization, exclude=membership).exists():
             raise Conflict(
-                "An organization must keep at least one Owner.", code="last_owner",
+                "An organization must keep at least one Owner.",
+                code="last_owner",
             )
 
 
@@ -218,8 +237,9 @@ def _describe(role, site) -> str:
 @transaction.atomic
 def set_membership_roles(membership, roles: list[Role], *, actor, request=None, system: bool = False):
     """Replaces ALL role assignments of a membership with organization-wide ``roles``."""
-    set_membership_assignments(membership, [(r, None) for r in roles], actor=actor, request=request,
-                               system=system)
+    set_membership_assignments(
+        membership, [(r, None) for r in roles], actor=actor, request=request, system=system
+    )
 
 
 @transaction.atomic
@@ -234,11 +254,15 @@ def set_membership_assignments(membership, assignments: list, *, actor, request=
         if site is not None and site.organization_id != org.pk:
             raise ValidationFailed("Site belongs to a different organization.", code="cross_tenant_site")
         if site is not None and role.is_owner:
-            raise ValidationFailed("The Owner role is organization-wide and cannot be limited to a site.",
-                                   code="owner_not_site_scoped")
+            raise ValidationFailed(
+                "The Owner role is organization-wide and cannot be limited to a site.",
+                code="owner_not_site_scoped",
+            )
         wanted[(role.pk, _site_id(site))] = (role, site)
-    current = {(mr.role_id, mr.site_id): mr
-               for mr in MembershipRole.objects.filter(membership=membership).select_related("role", "site")}
+    current = {
+        (mr.role_id, mr.site_id): mr
+        for mr in MembershipRole.objects.filter(membership=membership).select_related("role", "site")
+    }
     touches_owner = any(r.is_owner for key, (r, _) in wanted.items() if key not in current) or any(
         mr.role.is_owner for key, mr in current.items() if key not in wanted
     )
@@ -260,8 +284,15 @@ def set_membership_assignments(membership, assignments: list, *, actor, request=
     clear_cache(membership)
     after = sorted(_describe(r, s) for r, s in wanted.values())
     if before != after:
-        audit.record("membership.roles_changed", actor=actor, organization=org, target=membership,
-                     before={"roles": before}, after={"roles": after}, request=request)
+        audit.record(
+            "membership.roles_changed",
+            actor=actor,
+            organization=org,
+            target=membership,
+            before={"roles": before},
+            after={"roles": after},
+            request=request,
+        )
 
 
 def _membership_of(user, org):
@@ -276,7 +307,9 @@ def _membership_of(user, org):
 
 
 @transaction.atomic
-def create_role(org, *, name: str, description: str, permission_codes: list[str], actor, request=None) -> Role:
+def create_role(
+    org, *, name: str, description: str, permission_codes: list[str], actor, request=None
+) -> Role:
     name = name.strip()
     if not name:
         raise ValidationFailed("Role name is required.")
@@ -285,8 +318,14 @@ def create_role(org, *, name: str, description: str, permission_codes: list[str]
     role = Role(organization=org, name=name, description=description.strip())
     role.save()
     _apply_permissions(role, permission_codes)
-    audit.record("role.created", actor=actor, organization=org, target=role,
-                 after={"name": name, "permissions": sorted(permission_codes)}, request=request)
+    audit.record(
+        "role.created",
+        actor=actor,
+        organization=org,
+        target=role,
+        after={"name": name, "permissions": sorted(permission_codes)},
+        request=request,
+    )
     return role
 
 
@@ -299,16 +338,30 @@ def update_role(role: Role, *, name: str, description: str, permission_codes: li
         raise ValidationFailed("Role name is required.")
     if role.is_system and name != role.name:
         raise ValidationFailed("System roles cannot be renamed.", code="system_role")
-    if Role.objects.unscoped().filter(organization=role.organization, name__iexact=name).exclude(pk=role.pk).exists():
+    if (
+        Role.objects.unscoped()
+        .filter(organization=role.organization, name__iexact=name)
+        .exclude(pk=role.pk)
+        .exists()
+    ):
         raise Conflict("A role with this name already exists.", code="duplicate_role")
-    before = {"name": role.name, "description": role.description,
-              "permissions": sorted(role.role_permissions.values_list("permission__code", flat=True))}
+    before = {
+        "name": role.name,
+        "description": role.description,
+        "permissions": sorted(role.role_permissions.values_list("permission__code", flat=True)),
+    }
     role.name, role.description = name, description.strip()
     role.save()
     _apply_permissions(role, permission_codes)
-    audit.record("role.updated", actor=actor, organization=role.organization, target=role, before=before,
-                 after={"name": name, "description": role.description, "permissions": sorted(permission_codes)},
-                 request=request)
+    audit.record(
+        "role.updated",
+        actor=actor,
+        organization=role.organization,
+        target=role,
+        before=before,
+        after={"name": name, "description": role.description, "permissions": sorted(permission_codes)},
+        request=request,
+    )
     # cached permission sets of in-flight requests are per-request only; nothing global to invalidate
 
 
@@ -336,8 +389,14 @@ def delete_role(role: Role, *, actor, request=None):
     org = role.organization
     pk = role.pk
     role.delete()
-    audit.record("role.deleted", actor=actor, organization=org, target_repr=f"Role {snap['name']} ({pk})",
-                 before=snap, request=request)
+    audit.record(
+        "role.deleted",
+        actor=actor,
+        organization=org,
+        target_repr=f"Role {snap['name']} ({pk})",
+        before=snap,
+        request=request,
+    )
 
 
 def system_role_by_key(org, key: str) -> Role:

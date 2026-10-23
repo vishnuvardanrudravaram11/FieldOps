@@ -1,6 +1,7 @@
 """M01 HTML views (server-rendered, HTMX-free CRUD). Each view: login -> active membership -> permission gate
 (anywhere) -> object lookup restricted to the caller's organization AND site scope (404) -> permission for that
 site (403) -> service call (validation, transaction, audit) -> redirect with a message only after success."""
+
 from __future__ import annotations
 
 from django.contrib import messages
@@ -19,8 +20,13 @@ from . import selectors, services
 from .forms import CalendarForm, ContactForm, HolidayForm, SiteForm, ZoneForm
 from .models import CalendarHoliday
 
-TABS = [("overview", "Overview"), ("locations", "Locations"), ("calendars", "Calendars"),
-        ("contacts", "Contacts"), ("assets", "Assets")]
+TABS = [
+    ("overview", "Overview"),
+    ("locations", "Locations"),
+    ("calendars", "Calendars"),
+    ("contacts", "Contacts"),
+    ("assets", "Assets"),
+]
 
 
 def or404(fn, *args, **kwargs):
@@ -36,9 +42,19 @@ def need(request, code: str, site=None):
 
 
 def form_page(request, *, title, form, cancel_url, crumbs, submit="Save", subtitle="", status=200):
-    return render(request, "ui/form_page.html", {
-        "title": title, "form": form, "cancel_url": cancel_url, "crumbs": crumbs, "submit": submit,
-        "subtitle": subtitle}, status=status)
+    return render(
+        request,
+        "ui/form_page.html",
+        {
+            "title": title,
+            "form": form,
+            "cancel_url": cancel_url,
+            "crumbs": crumbs,
+            "submit": submit,
+            "subtitle": subtitle,
+        },
+        status=status,
+    )
 
 
 class SiteBase(TenantPermissionMixin, View):
@@ -58,9 +74,16 @@ class SiteListView(SiteBase):
     def get(self, request):
         qs = selectors.site_list(request.membership, request.organization, request.GET)
         page = Paginator(qs, 20).get_page(request.GET.get("page"))
-        return render(request, "sites/list.html", {
-            "page": page, "q": request.GET.get("q", ""), "status": request.GET.get("status", ""),
-            "can_create": rbac.has_permission(request.membership, "site.create")})
+        return render(
+            request,
+            "sites/list.html",
+            {
+                "page": page,
+                "q": request.GET.get("q", ""),
+                "status": request.GET.get("status", ""),
+                "can_create": rbac.has_permission(request.membership, "site.create"),
+            },
+        )
 
 
 class SiteCreateView(SiteBase):
@@ -71,16 +94,22 @@ class SiteCreateView(SiteBase):
             "timezone": request.organization.timezone,
             "country": getattr(request.organization, "country", "IN") or "IN",
         }
-        return form_page(request, title="New site", form=SiteForm(initial=initial),
-                         cancel_url="/app/sites/", crumbs=[("Sites", "/app/sites/"), ("New site", None)],
-                         submit="Create site")
+        return form_page(
+            request,
+            title="New site",
+            form=SiteForm(initial=initial),
+            cancel_url="/app/sites/",
+            crumbs=[("Sites", "/app/sites/"), ("New site", None)],
+            submit="Create site",
+        )
 
     def post(self, request):
         form = SiteForm(request.POST)
         if form.is_valid():
             try:
-                site = services.create_site(request.organization, actor=request.user, request=request,
-                                            **form.cleaned_data)
+                site = services.create_site(
+                    request.organization, actor=request.user, request=request, **form.cleaned_data
+                )
             except DomainError as exc:
                 if getattr(exc, "code", "") == "duplicate_site_code":
                     form.add_error("code", exc.message)
@@ -89,8 +118,15 @@ class SiteCreateView(SiteBase):
             else:
                 messages.success(request, f"Site {site.code} created.")
                 return redirect("sites:detail", pk=site.pk)
-        return form_page(request, title="New site", form=form, cancel_url="/app/sites/",
-                         crumbs=[("Sites", "/app/sites/"), ("New site", None)], submit="Create site", status=400)
+        return form_page(
+            request,
+            title="New site",
+            form=form,
+            cancel_url="/app/sites/",
+            crumbs=[("Sites", "/app/sites/"), ("New site", None)],
+            submit="Create site",
+            status=400,
+        )
 
 
 class SiteEditView(SiteBase):
@@ -118,9 +154,14 @@ class SiteEditView(SiteBase):
         return self._page(request, site, form, status=400)
 
     def _page(self, request, site, form, status=200):
-        return form_page(request, title=f"Edit {site.code}", form=form, cancel_url=f"/app/sites/{site.pk}/",
-                         crumbs=[("Sites", "/app/sites/"), (site.code, f"/app/sites/{site.pk}/"), ("Edit", None)],
-                         status=status)
+        return form_page(
+            request,
+            title=f"Edit {site.code}",
+            form=form,
+            cancel_url=f"/app/sites/{site.pk}/",
+            crumbs=[("Sites", "/app/sites/"), (site.code, f"/app/sites/{site.pk}/"), ("Edit", None)],
+            status=status,
+        )
 
 
 class SiteDetailView(SiteBase):
@@ -132,16 +173,33 @@ class SiteDetailView(SiteBase):
         tab = request.GET.get("tab", "overview")
         if tab not in dict(TABS) or (tab == "assets" and not selectors.assets_installed()):
             tab = "overview"
-        codes = ["site.update", "site.deactivate", "site.contact.manage", "zone.view", "zone.create", "zone.update",
-                 "zone.deactivate", "calendar.view", "calendar.create", "calendar.update", "calendar.delete"]
+        codes = [
+            "site.update",
+            "site.deactivate",
+            "site.contact.manage",
+            "zone.view",
+            "zone.create",
+            "zone.update",
+            "zone.deactivate",
+            "calendar.view",
+            "calendar.create",
+            "calendar.update",
+            "calendar.delete",
+        ]
         has_assets = selectors.assets_installed()
         if has_assets:  # asset.* permissions only exist once the Assets module is installed
             codes += ["asset.view", "asset.create"]
         perms = {code.replace(".", "_"): rbac.has_permission(m, code, site) for code in codes}
         perms.setdefault("asset_view", False)
         perms.setdefault("asset_create", False)
-        ctx = {"site": site, "tab": tab, "tabs": TABS if has_assets else [t for t in TABS if t[0] != "assets"],
-               "perms": perms, "reason_form": ReasonForm(), "asset_total": 0}
+        ctx = {
+            "site": site,
+            "tab": tab,
+            "tabs": TABS if has_assets else [t for t in TABS if t[0] != "assets"],
+            "perms": perms,
+            "reason_form": ReasonForm(),
+            "asset_total": 0,
+        }
         if tab == "locations" and perms["zone_view"]:
             ctx["tree"] = selectors.flatten_tree(selectors.zone_tree(site))
         elif tab == "calendars" and perms["calendar_view"]:
@@ -164,8 +222,9 @@ class SiteDetailView(SiteBase):
         site = self.site(request, pk, needed)
         try:
             if action == "deactivate":
-                services.deactivate_site(site, reason=request.POST.get("reason", ""), actor=request.user,
-                                         request=request)
+                services.deactivate_site(
+                    site, reason=request.POST.get("reason", ""), actor=request.user, request=request
+                )
                 messages.success(request, f"Site {site.code} deactivated.")
             else:
                 services.reactivate_site(site, actor=request.user, request=request)
@@ -193,9 +252,14 @@ class ZoneCreateView(SiteBase):
 
     def get(self, request, pk):
         site = self.site(request, pk, "zone.create")
-        return form_page(request, title=f"New location in {site.code}", form=self._form(request, site),
-                         cancel_url=f"/app/sites/{site.pk}/?tab=locations",
-                         crumbs=_site_crumbs(site, ("New location", None)), submit="Create location")
+        return form_page(
+            request,
+            title=f"New location in {site.code}",
+            form=self._form(request, site),
+            cancel_url=f"/app/sites/{site.pk}/?tab=locations",
+            crumbs=_site_crumbs(site, ("New location", None)),
+            submit="Create location",
+        )
 
     def post(self, request, pk):
         site = self.site(request, pk, "zone.create")
@@ -209,9 +273,15 @@ class ZoneCreateView(SiteBase):
             else:
                 messages.success(request, "Location created.")
                 return redirect(f"/app/sites/{site.pk}/?tab=locations")
-        return form_page(request, title=f"New location in {site.code}", form=form,
-                         cancel_url=f"/app/sites/{site.pk}/?tab=locations",
-                         crumbs=_site_crumbs(site, ("New location", None)), submit="Create location", status=400)
+        return form_page(
+            request,
+            title=f"New location in {site.code}",
+            form=form,
+            cancel_url=f"/app/sites/{site.pk}/?tab=locations",
+            crumbs=_site_crumbs(site, ("New location", None)),
+            submit="Create location",
+            status=400,
+        )
 
 
 class ZoneEditView(SiteBase):
@@ -224,9 +294,17 @@ class ZoneEditView(SiteBase):
 
     def get(self, request, pk):
         zone = self._zone(request, pk)
-        form = ZoneForm(site=zone.site, zone=zone, initial={
-            "name": zone.name, "zone_type": zone.zone_type, "code": zone.code, "parent": zone.parent_id,
-            "description": zone.description})
+        form = ZoneForm(
+            site=zone.site,
+            zone=zone,
+            initial={
+                "name": zone.name,
+                "zone_type": zone.zone_type,
+                "code": zone.code,
+                "parent": zone.parent_id,
+                "description": zone.description,
+            },
+        )
         return self._page(request, zone, form)
 
     def post(self, request, pk):
@@ -244,9 +322,14 @@ class ZoneEditView(SiteBase):
         return self._page(request, zone, form, status=400)
 
     def _page(self, request, zone, form, status=200):
-        return form_page(request, title=f"Edit {zone.name}", form=form,
-                         cancel_url=f"/app/sites/{zone.site_id}/?tab=locations",
-                         crumbs=_site_crumbs(zone.site, (zone.name, None)), status=status)
+        return form_page(
+            request,
+            title=f"Edit {zone.name}",
+            form=form,
+            cancel_url=f"/app/sites/{zone.site_id}/?tab=locations",
+            crumbs=_site_crumbs(zone.site, (zone.name, None)),
+            status=status,
+        )
 
 
 class ZoneStatusView(SiteBase):
@@ -261,8 +344,9 @@ class ZoneStatusView(SiteBase):
                 services.reactivate_zone(zone, actor=request.user, request=request)
                 messages.success(request, f"{zone.name} reactivated.")
             else:
-                services.deactivate_zone(zone, reason=request.POST.get("reason", ""), actor=request.user,
-                                         request=request)
+                services.deactivate_zone(
+                    zone, reason=request.POST.get("reason", ""), actor=request.user, request=request
+                )
                 messages.success(request, f"{zone.name} deactivated.")
         except DomainError as exc:
             messages.error(request, exc.message)
@@ -276,9 +360,15 @@ class CalendarCreateView(SiteBase):
     required_permission = "calendar.create"
 
     def _page(self, request, site, form, status=200):
-        return form_page(request, title=f"New operating calendar for {site.code}", form=form,
-                         cancel_url=f"/app/sites/{site.pk}/?tab=calendars",
-                         crumbs=_site_crumbs(site, ("New calendar", None)), submit="Create calendar", status=status)
+        return form_page(
+            request,
+            title=f"New operating calendar for {site.code}",
+            form=form,
+            cancel_url=f"/app/sites/{site.pk}/?tab=calendars",
+            crumbs=_site_crumbs(site, ("New calendar", None)),
+            submit="Create calendar",
+            status=status,
+        )
 
     def get(self, request, pk):
         site = self.site(request, pk, "calendar.create")
@@ -307,15 +397,32 @@ class CalendarEditView(SiteBase):
         return cal
 
     def _page(self, request, cal, form, status=200):
-        return form_page(request, title=f"Edit calendar {cal.name}", form=form,
-                         cancel_url=f"/app/sites/{cal.site_id}/?tab=calendars",
-                         crumbs=_site_crumbs(cal.site, (cal.name, None)), status=status)
+        return form_page(
+            request,
+            title=f"Edit calendar {cal.name}",
+            form=form,
+            cancel_url=f"/app/sites/{cal.site_id}/?tab=calendars",
+            crumbs=_site_crumbs(cal.site, (cal.name, None)),
+            status=status,
+        )
 
     def get(self, request, pk):
         cal = self._cal(request, pk)
-        return self._page(request, cal, CalendarForm(initial={
-            "name": cal.name, "is_24x7": cal.is_24x7, "working_days": cal.working_days, "start_time": cal.start_time,
-            "end_time": cal.end_time, "is_default": cal.is_default, "notes": cal.notes}))
+        return self._page(
+            request,
+            cal,
+            CalendarForm(
+                initial={
+                    "name": cal.name,
+                    "is_24x7": cal.is_24x7,
+                    "working_days": cal.working_days,
+                    "start_time": cal.start_time,
+                    "end_time": cal.end_time,
+                    "is_default": cal.is_default,
+                    "notes": cal.notes,
+                }
+            ),
+        )
 
     def post(self, request, pk):
         cal = self._cal(request, pk)
@@ -358,8 +465,12 @@ class HolidayView(SiteBase):
         back = redirect(f"/app/sites/{cal.site_id}/?tab=calendars")
         try:
             if request.POST.get("action") == "remove":
-                holiday = or404(selectors.scoped_get, CalendarHoliday.objects.filter(calendar=cal),
-                                request.POST.get("holiday"), "Holiday")
+                holiday = or404(
+                    selectors.scoped_get,
+                    CalendarHoliday.objects.filter(calendar=cal),
+                    request.POST.get("holiday"),
+                    "Holiday",
+                )
                 services.remove_holiday(holiday, actor=request.user, request=request)
                 messages.success(request, "Holiday removed.")
             else:
@@ -367,8 +478,13 @@ class HolidayView(SiteBase):
                 if not form.is_valid():
                     messages.error(request, "Enter a valid date and a name for the holiday.")
                     return back
-                services.add_holiday(cal, date=form.cleaned_data["date"], name=form.cleaned_data["name"],
-                                     actor=request.user, request=request)
+                services.add_holiday(
+                    cal,
+                    date=form.cleaned_data["date"],
+                    name=form.cleaned_data["name"],
+                    actor=request.user,
+                    request=request,
+                )
                 messages.success(request, "Holiday added.")
         except DomainError as exc:
             messages.error(request, exc.message)
@@ -382,9 +498,15 @@ class ContactCreateView(SiteBase):
     required_permission = "site.contact.manage"
 
     def _page(self, request, site, form, status=200):
-        return form_page(request, title=f"New contact for {site.code}", form=form,
-                         cancel_url=f"/app/sites/{site.pk}/?tab=contacts",
-                         crumbs=_site_crumbs(site, ("New contact", None)), submit="Add contact", status=status)
+        return form_page(
+            request,
+            title=f"New contact for {site.code}",
+            form=form,
+            cancel_url=f"/app/sites/{site.pk}/?tab=contacts",
+            crumbs=_site_crumbs(site, ("New contact", None)),
+            submit="Add contact",
+            status=status,
+        )
 
     def get(self, request, pk):
         site = self.site(request, pk, "site.contact.manage")
@@ -408,19 +530,30 @@ class ContactEditView(SiteBase):
     required_permission = "site.contact.manage"
 
     def _contact(self, request, pk):
-        c = or404(selectors.scoped_get, selectors.contacts_for(request.membership, request.organization), pk,
-                  "Contact")
+        c = or404(
+            selectors.scoped_get,
+            selectors.contacts_for(request.membership, request.organization),
+            pk,
+            "Contact",
+        )
         need(request, "site.contact.manage", c.site)
         return c
 
     def _page(self, request, c, form, status=200):
-        return form_page(request, title=f"Edit contact {c.name}", form=form,
-                         cancel_url=f"/app/sites/{c.site_id}/?tab=contacts",
-                         crumbs=_site_crumbs(c.site, (c.name, None)), status=status)
+        return form_page(
+            request,
+            title=f"Edit contact {c.name}",
+            form=form,
+            cancel_url=f"/app/sites/{c.site_id}/?tab=contacts",
+            crumbs=_site_crumbs(c.site, (c.name, None)),
+            status=status,
+        )
 
     def get(self, request, pk):
         c = self._contact(request, pk)
-        return self._page(request, c, ContactForm(initial={f: getattr(c, f) for f in services.CONTACT_FIELDS}))
+        return self._page(
+            request, c, ContactForm(initial={f: getattr(c, f) for f in services.CONTACT_FIELDS})
+        )
 
     def post(self, request, pk):
         c = self._contact(request, pk)
@@ -441,4 +574,3 @@ class ContactEditView(SiteBase):
                 messages.success(request, "Contact saved.")
                 return redirect(f"/app/sites/{c.site_id}/?tab=contacts")
         return self._page(request, c, form, status=400)
-

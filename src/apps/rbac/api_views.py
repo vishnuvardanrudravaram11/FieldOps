@@ -35,7 +35,9 @@ class RoleSerializer(serializers.ModelSerializer):
 class RoleWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=80)
     description = serializers.CharField(max_length=300, required=False, allow_blank=True, default="")
-    permissions = serializers.ListField(child=serializers.CharField(max_length=80), required=False, default=list)
+    permissions = serializers.ListField(
+        child=serializers.CharField(max_length=80), required=False, default=list
+    )
 
 
 class PermissionViewSet(TenantAPIMixin, viewsets.ViewSet):
@@ -48,11 +50,18 @@ class PermissionViewSet(TenantAPIMixin, viewsets.ViewSet):
 
 @extend_schema(parameters=[OpenApiParameter("id", OpenApiTypes.UUID, OpenApiParameter.PATH)])
 class RoleViewSet(TenantAPIMixin, viewsets.ViewSet):
-    permission_map = {"list": "role.view", "retrieve": "role.view", "create": "role.manage",
-                      "update": "role.manage", "destroy": "role.manage"}
+    permission_map = {
+        "list": "role.view",
+        "retrieve": "role.view",
+        "create": "role.manage",
+        "update": "role.manage",
+        "destroy": "role.manage",
+    }
 
     def _roles(self, request):
-        return Role.objects.for_organization(request.organization).prefetch_related("role_permissions__permission")
+        return Role.objects.for_organization(request.organization).prefetch_related(
+            "role_permissions__permission"
+        )
 
     def _get(self, request, pk):
         try:
@@ -73,8 +82,14 @@ class RoleViewSet(TenantAPIMixin, viewsets.ViewSet):
         ser = RoleWriteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
-        role = services.create_role(request.organization, name=d["name"], description=d["description"],
-                                    permission_codes=d["permissions"], actor=request.user, request=request)
+        role = services.create_role(
+            request.organization,
+            name=d["name"],
+            description=d["description"],
+            permission_codes=d["permissions"],
+            actor=request.user,
+            request=request,
+        )
         return Response(RoleSerializer(self._get(request, role.pk)).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=RoleWriteSerializer, responses=RoleSerializer)
@@ -83,8 +98,14 @@ class RoleViewSet(TenantAPIMixin, viewsets.ViewSet):
         ser = RoleWriteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
-        services.update_role(role, name=d["name"], description=d["description"], permission_codes=d["permissions"],
-                             actor=request.user, request=request)
+        services.update_role(
+            role,
+            name=d["name"],
+            description=d["description"],
+            permission_codes=d["permissions"],
+            actor=request.user,
+            request=request,
+        )
         return Response(RoleSerializer(self._get(request, pk)).data)
 
     @extend_schema(responses={204: None})

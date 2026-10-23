@@ -29,8 +29,12 @@ def home(request):
     if perms and all(p.startswith("portal.request.") for p in perms):  # client-only account: portal is home
         return redirect("portal:dashboard")
     stats = {
-        "active_members": Membership.objects.for_organization(org).filter(status=Membership.Status.ACTIVE).count(),
-        "pending_invites": Membership.objects.for_organization(org).filter(status=Membership.Status.INVITED).count(),
+        "active_members": Membership.objects.for_organization(org)
+        .filter(status=Membership.Status.ACTIVE)
+        .count(),
+        "pending_invites": Membership.objects.for_organization(org)
+        .filter(status=Membership.Status.INVITED)
+        .count(),
         "roles": Role.objects.for_organization(org).count(),
     }
     recent = []
@@ -52,7 +56,9 @@ def choose_org(request):
 def switch_org(request):
     """Selects among the user's OWN active memberships; nothing is granted by the posted value."""
     target = request.POST.get("organization")
-    match = next((m for m in selectors.active_memberships(request.user) if str(m.organization_id) == target), None)
+    match = next(
+        (m for m in selectors.active_memberships(request.user) if str(m.organization_id) == target), None
+    )
     if match is None:
         messages.error(request, "You are not a member of that organization.")
         return redirect("ui:choose_org")
@@ -70,14 +76,24 @@ def search(request):
     if m is not None and len(q) >= 2:
         org = request.organization
         if rbac.has_permission(m, "user.view"):
-            for mem in Membership.objects.for_organization(org).filter(
-                Q(user__full_name__icontains=q) | Q(user__email__icontains=q)
-            ).select_related("user")[:5]:
-                results.append({"kind": "User", "label": mem.user.display_name, "sub": mem.user.email,
-                                "url": f"/app/users/{mem.pk}/"})
+            for mem in (
+                Membership.objects.for_organization(org)
+                .filter(Q(user__full_name__icontains=q) | Q(user__email__icontains=q))
+                .select_related("user")[:5]
+            ):
+                results.append(
+                    {
+                        "kind": "User",
+                        "label": mem.user.display_name,
+                        "sub": mem.user.email,
+                        "url": f"/app/users/{mem.pk}/",
+                    }
+                )
         if rbac.has_permission(m, "role.view"):
             for r in Role.objects.for_organization(org).filter(name__icontains=q)[:5]:
-                results.append({"kind": "Role", "label": r.name, "sub": r.description, "url": f"/app/roles/{r.pk}/"})
+                results.append(
+                    {"kind": "Role", "label": r.name, "sub": r.description, "url": f"/app/roles/{r.pk}/"}
+                )
     return render(request, "ui/_search_results.html", {"results": results, "q": q})
 
 
