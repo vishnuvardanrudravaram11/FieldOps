@@ -48,9 +48,7 @@ class DocumentSequence(TenantOwnedModel):
     last_value = models.PositiveIntegerField(default=0)
 
     class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["organization", "key"], name="uniq_sequence_per_org_key")
-        ]
+        constraints = [models.UniqueConstraint(fields=["organization", "key"], name="uniq_sequence_per_org_key")]
 
     def __str__(self):
         return f"{self.key}: {self.last_value}"

@@ -3,7 +3,6 @@
 Error envelope (every non-2xx JSON response):
     {"error": {"code": "...", "message": "...", "details": {...}, "request_id": "..."}}
 """
-
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404
 from rest_framework import exceptions as drf

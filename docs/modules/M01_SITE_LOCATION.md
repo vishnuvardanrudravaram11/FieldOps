@@ -2,7 +2,8 @@
 
 Part of the ONE integrated FieldOps Nexus ERP. Read `docs/PROJECT_SOURCE_OF_TRUTH.md` and `docs/FIELDOPS_NEXUS_MASTER_BUSINESS_WORKFLOW.md` first.
 
-- **Functional scope:** Organizations, sites, buildings/zones, service areas, operating calendars, contact hierarchy.
+- **Answers:** Where does the organization operate, and where can work happen?
+- **HPE CONFIRMED scope (section 7.2):** Organizations, sites, buildings/zones, service areas, operating calendars, contact hierarchy.
 - **Team owner / phase:** Vishnu / Phase 1
 - **Authoritatively owns:** Site, Zone (building/zone/service area tree), OperatingCalendar + holidays, SiteContact hierarchy, site activation.
 - **Consumes:** Foundation (organizations, RBAC, audit).

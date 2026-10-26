@@ -53,16 +53,10 @@ class MemberSerializer(serializers.ModelSerializer):
         fields = ["id", "email", "full_name", "job_title", "status", "roles", "invited_at", "activated_at"]
 
     def get_roles(self, obj) -> list[dict]:
-        return [
-            {
-                "id": str(mr.role_id),
-                "name": mr.role.name,
-                "assignment_id": str(mr.pk),
-                "site_id": str(mr.site_id) if mr.site_id else None,
-                "site_code": mr.site.code if mr.site_id else None,
-            }
-            for mr in obj.membership_roles.all()
-        ]
+        return [{"id": str(mr.role_id), "name": mr.role.name, "assignment_id": str(mr.pk),
+                 "site_id": str(mr.site_id) if mr.site_id else None,
+                 "site_code": mr.site.code if mr.site_id else None}
+                for mr in obj.membership_roles.all()]
 
 
 class RoleAssignmentSerializer(serializers.Serializer):
@@ -105,13 +99,9 @@ class MemberUpdateSerializer(_AssignmentInput):
 @extend_schema(parameters=[OpenApiParameter("id", OpenApiTypes.UUID, OpenApiParameter.PATH)])
 class MemberViewSet(TenantAPIMixin, viewsets.ViewSet):
     permission_map = {
-        "list": "user.view",
-        "retrieve": "user.view",
-        "create": "user.invite",
-        "partial_update": "user.update",
-        "deactivate": "user.deactivate",
-        "reactivate": "user.deactivate",
-        "resend": "user.invite",
+        "list": "user.view", "retrieve": "user.view", "create": "user.invite",
+        "partial_update": "user.update", "deactivate": "user.deactivate",
+        "reactivate": "user.deactivate", "resend": "user.invite",
     }
 
     def _qs(self, request):
@@ -138,16 +128,9 @@ class MemberViewSet(TenantAPIMixin, viewsets.ViewSet):
         ser = InviteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
-        m = services.invite_member(
-            request.organization,
-            email=d["email"],
-            full_name=d.get("full_name", ""),
-            role_ids=d.get("role_ids"),
-            site_ids=d.get("site_ids"),
-            assignments=d.get("role_assignments"),
-            actor=request.user,
-            request=request,
-        )
+        m = services.invite_member(request.organization, email=d["email"], full_name=d.get("full_name", ""),
+                                   role_ids=d.get("role_ids"), site_ids=d.get("site_ids"),
+                                   assignments=d.get("role_assignments"), actor=request.user, request=request)
         return Response(MemberSerializer(m).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=MemberUpdateSerializer, responses=MemberSerializer)
@@ -156,16 +139,9 @@ class MemberViewSet(TenantAPIMixin, viewsets.ViewSet):
         ser = MemberUpdateSerializer(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
-        services.update_member(
-            m,
-            actor=request.user,
-            request=request,
-            full_name=d.get("full_name"),
-            job_title=d.get("job_title"),
-            role_ids=d.get("role_ids"),
-            site_ids=d.get("site_ids"),
-            assignments=d.get("role_assignments"),
-        )
+        services.update_member(m, actor=request.user, request=request, full_name=d.get("full_name"),
+                               job_title=d.get("job_title"), role_ids=d.get("role_ids"),
+                               site_ids=d.get("site_ids"), assignments=d.get("role_assignments"))
         return Response(MemberSerializer(services.get_membership(request.organization, pk)).data)
 
     @extend_schema(request=None, responses=MemberSerializer)

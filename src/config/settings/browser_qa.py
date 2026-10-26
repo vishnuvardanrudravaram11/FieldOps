@@ -1,5 +1,4 @@
 """Isolated LOCAL browser-acceptance settings: Docker Postgres/Redis only. Refuses to start on any other database."""
-
 import os
 from urllib.parse import urlparse
 

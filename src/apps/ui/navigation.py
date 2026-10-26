@@ -1,6 +1,5 @@
 """Navigation registry. Each app declares its sidebar entries in ``<app>/navigation.py`` via ``register``.
 Only IMPLEMENTED modules register entries, so the shell never shows dead links."""
-
 from dataclasses import dataclass
 
 _ITEMS: list["NavItem"] = []

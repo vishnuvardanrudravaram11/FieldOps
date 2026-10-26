@@ -1,6 +1,5 @@
 """Audit foundation. Call ``record()`` from service-layer code inside the same transaction as the change,
 so the audit row and the business change commit (or roll back) together."""
-
 from __future__ import annotations
 
 import datetime
@@ -41,16 +40,9 @@ def site_of(target):
 
         if isinstance(target, Site):
             return target.pk
-        for path in (
-            ("site_id",),
-            ("asset", "site_id"),
-            ("work_order", "site_id"),
-            ("warehouse", "site_id"),
-            ("plan", "site_id"),
-            ("balance", "warehouse", "site_id"),
-            ("tracking", "site_id"),
-            ("request", "site_id"),
-        ):
+        for path in (("site_id",), ("asset", "site_id"), ("work_order", "site_id"), ("warehouse", "site_id"),
+                     ("plan", "site_id"), ("balance", "warehouse", "site_id"), ("tracking", "site_id"),
+                     ("request", "site_id")):
             obj = target
             for part in path:
                 obj = getattr(obj, part, None)
@@ -83,15 +75,16 @@ def record(
     before: dict | None = None,
     after: dict | None = None,
     metadata: dict | None = None,
+    site_id=None,
     request=None,
 ) -> AuditLog:
     target_type = target_id = ""
-    site_id = None
     if target is not None:
         target_type = target._meta.label_lower
         target_id = str(target.pk)
         target_repr = target_repr or str(target)[:300]
-        site_id = site_of(target)
+        if site_id is None:
+            site_id = site_of(target)
     if actor is not None and not getattr(actor, "is_authenticated", True):
         actor = None
     return AuditLog.objects.create(

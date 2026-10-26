@@ -1,5 +1,4 @@
 """M01 Site & Location Master: services, API, RBAC, tenant isolation, constraints."""
-
 import pytest
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
@@ -62,6 +61,7 @@ def test_deactivation_needs_reason_and_is_a_state_transition(org_a, site_a1, own
     site_a1.refresh_from_db()
     assert site_a1.status == "ACTIVE" and site_a1.status_reason == ""
     assert {"site.deactivated", "site.reactivated"} <= set(audit_actions(org_a))
+
 
 
 def test_inactive_site_rejects_new_locations_and_calendars(org_a, site_a1, owner_a):
@@ -136,29 +136,22 @@ def test_zone_duplicate_names_and_codes(site_a1, make_zone):
         Zone(organization=site_a1.organization, site=site_a1, name="HALL").save()
 
 
+
 def test_calendar_rules(org_a, site_a1, owner_a):
     from datetime import time
 
-    c1 = services.create_calendar(
-        site_a1,
-        actor=owner_a,
-        name="Weekdays",
-        working_days=[1, 2, 3, 4, 5],
-        start_time=time(8),
-        end_time=time(17),
-    )
+    c1 = services.create_calendar(site_a1, actor=owner_a, name="Weekdays", working_days=[1, 2, 3, 4, 5],
+                                  start_time=time(8), end_time=time(17))
     assert c1.is_default  # first calendar becomes the default
     c2 = services.create_calendar(site_a1, actor=owner_a, name="Always", is_24x7=True, is_default=True)
     c1.refresh_from_db()
     assert c2.is_default and not c1.is_default and c2.working_days == [1, 2, 3, 4, 5, 6, 7]
     with pytest.raises(ValidationFailed):
-        services.create_calendar(
-            site_a1, actor=owner_a, name="Bad", working_days=[1], start_time=time(9), end_time=time(9)
-        )
+        services.create_calendar(site_a1, actor=owner_a, name="Bad", working_days=[1], start_time=time(9),
+                                 end_time=time(9))
     with pytest.raises(ValidationFailed):
-        services.create_calendar(
-            site_a1, actor=owner_a, name="Bad2", working_days=[8], start_time=time(9), end_time=time(10)
-        )
+        services.create_calendar(site_a1, actor=owner_a, name="Bad2", working_days=[8], start_time=time(9),
+                                 end_time=time(10))
     with pytest.raises(Conflict):
         services.create_calendar(site_a1, actor=owner_a, name="weekdays", is_24x7=True)
     with pytest.raises(Conflict):
@@ -196,11 +189,8 @@ def test_contact_escalation_hierarchy(org_a, site_a1, owner_a):
 
 def test_api_site_crud_persists_and_audits(as_user, owner_a, org_a):
     c = as_user(owner_a, org_a)
-    r = c.post(
-        "/api/v1/sites/",
-        {"code": "n1", "name": "North", "city": "Pune", "country": "IN", "timezone": "Asia/Kolkata"},
-        format="json",
-    )
+    r = c.post("/api/v1/sites/", {"code": "n1", "name": "North", "city": "Pune", "country": "IN",
+                                  "timezone": "Asia/Kolkata"}, format="json")
     assert r.status_code == 201, r.content
     sid = r.json()["id"]
     assert Site.objects.unscoped().get(pk=sid).code == "N1"
@@ -229,6 +219,7 @@ def test_api_site_list_filter_search_pagination(as_user, owner_a, org_a, make_si
     assert c.get("/api/v1/sites/?status=INACTIVE").json()["count"] == 0
 
 
+
 def test_api_rbac_matrix_for_sites(as_user, api, org_a, owner_a, tech_a, site_a1):
     # unauthenticated
     assert api.get("/api/v1/sites/").status_code == 401
@@ -237,25 +228,12 @@ def test_api_rbac_matrix_for_sites(as_user, api, org_a, owner_a, tech_a, site_a1
     assert tech.get(f"/api/v1/sites/{site_a1.pk}/").status_code == 200
     assert tech.post("/api/v1/sites/", {"code": "T", "name": "T"}, format="json").status_code == 403
     assert tech.patch(f"/api/v1/sites/{site_a1.pk}/", {"name": "x"}, format="json").status_code == 403
-    assert (
-        tech.post(f"/api/v1/sites/{site_a1.pk}/deactivate/", {"reason": "x"}, format="json").status_code
-        == 403
-    )
-    assert (
-        tech.post("/api/v1/zones/", {"site": str(site_a1.pk), "name": "Z"}, format="json").status_code == 403
-    )
-    assert (
-        tech.post(
-            "/api/v1/calendars/", {"site": str(site_a1.pk), "name": "C", "is_24x7": True}, format="json"
-        ).status_code
-        == 403
-    )
-    assert (
-        tech.post(
-            "/api/v1/site-contacts/", {"site": str(site_a1.pk), "name": "C", "phone": "1"}, format="json"
-        ).status_code
-        == 403
-    )
+    assert tech.post(f"/api/v1/sites/{site_a1.pk}/deactivate/", {"reason": "x"}, format="json").status_code == 403
+    assert tech.post("/api/v1/zones/", {"site": str(site_a1.pk), "name": "Z"}, format="json").status_code == 403
+    assert tech.post("/api/v1/calendars/", {"site": str(site_a1.pk), "name": "C", "is_24x7": True},
+                     format="json").status_code == 403
+    assert tech.post("/api/v1/site-contacts/", {"site": str(site_a1.pk), "name": "C", "phone": "1"},
+                     format="json").status_code == 403
     Site.objects.get(pk=site_a1.pk)  # untouched
     assert Site.objects.get(pk=site_a1.pk).name == site_a1.name
 
@@ -267,13 +245,10 @@ def test_api_header_for_non_member_org_is_rejected(as_user, owner_a, org_b):
 
 def test_api_zone_flow_and_tree(as_user, owner_a, org_a, site_a1):
     c = as_user(owner_a, org_a)
-    b = c.post(
-        "/api/v1/zones/", {"site": str(site_a1.pk), "name": "Block 1", "zone_type": "BUILDING"}, format="json"
-    )
+    b = c.post("/api/v1/zones/", {"site": str(site_a1.pk), "name": "Block 1", "zone_type": "BUILDING"},
+               format="json")
     assert b.status_code == 201, b.content
-    z = c.post(
-        "/api/v1/zones/", {"site": str(site_a1.pk), "name": "Bay", "parent": b.json()["id"]}, format="json"
-    )
+    z = c.post("/api/v1/zones/", {"site": str(site_a1.pk), "name": "Bay", "parent": b.json()["id"]}, format="json")
     assert z.status_code == 201 and z.json()["parent_name"] == "Block 1"
     tree = c.get(f"/api/v1/sites/{site_a1.pk}/tree/").json()
     assert tree[0]["name"] == "Block 1" and tree[0]["children"][0]["name"] == "Bay"
@@ -290,39 +265,16 @@ def test_api_zone_flow_and_tree(as_user, owner_a, org_a, site_a1):
 
 def test_api_calendar_holiday_contact_flow(as_user, owner_a, org_a, site_a1):
     c = as_user(owner_a, org_a)
-    r = c.post(
-        "/api/v1/calendars/",
-        {
-            "site": str(site_a1.pk),
-            "name": "Std",
-            "working_days": [1, 2, 3, 4, 5],
-            "start_time": "08:00",
-            "end_time": "17:00",
-        },
-        format="json",
-    )
+    r = c.post("/api/v1/calendars/", {"site": str(site_a1.pk), "name": "Std", "working_days": [1, 2, 3, 4, 5],
+                                      "start_time": "08:00", "end_time": "17:00"}, format="json")
     assert r.status_code == 201, r.content
     cid = r.json()["id"]
-    assert (
-        c.post(
-            "/api/v1/calendar-holidays/",
-            {"calendar": cid, "date": "2026-12-25", "name": "Xmas"},
-            format="json",
-        ).status_code
-        == 201
-    )
-    assert (
-        c.post(
-            "/api/v1/calendar-holidays/",
-            {"calendar": cid, "date": "2026-12-25", "name": "Dup"},
-            format="json",
-        ).status_code
-        == 409
-    )
+    assert c.post("/api/v1/calendar-holidays/", {"calendar": cid, "date": "2026-12-25", "name": "Xmas"},
+                  format="json").status_code == 201
+    assert c.post("/api/v1/calendar-holidays/", {"calendar": cid, "date": "2026-12-25", "name": "Dup"},
+                  format="json").status_code == 409
     assert len(c.get(f"/api/v1/calendars/{cid}/").json()["holidays"]) == 1
-    r = c.post(
-        "/api/v1/site-contacts/", {"site": str(site_a1.pk), "name": "Boss", "phone": "1"}, format="json"
-    )
+    r = c.post("/api/v1/site-contacts/", {"site": str(site_a1.pk), "name": "Boss", "phone": "1"}, format="json")
     assert r.status_code == 201 and r.json()["escalation_order"] == 1
     kid = r.json()["id"]
     assert c.patch(f"/api/v1/site-contacts/{kid}/", {"escalation_order": 2}, format="json").status_code == 200
@@ -339,54 +291,34 @@ def test_cross_tenant_idor_for_every_m01_route(as_user, owner_a, org_a, org_b, s
     hol_b = services.add_holiday(cal_b, date="2026-01-01", name="NY", actor=owner_b)
     con_b = services.add_contact(site_b1, actor=owner_b, name="X", phone="1")
     c = as_user(owner_a, org_a)
-    for url in (
-        f"/api/v1/sites/{site_b1.pk}/",
-        f"/api/v1/sites/{site_b1.pk}/tree/",
-        f"/api/v1/zones/{zone_b.pk}/",
-        f"/api/v1/calendars/{cal_b.pk}/",
-        f"/api/v1/site-contacts/{con_b.pk}/",
-    ):
+    for url in (f"/api/v1/sites/{site_b1.pk}/", f"/api/v1/sites/{site_b1.pk}/tree/",
+                f"/api/v1/zones/{zone_b.pk}/", f"/api/v1/calendars/{cal_b.pk}/",
+                f"/api/v1/site-contacts/{con_b.pk}/"):
         assert c.get(url).status_code == 404, url
     assert c.patch(f"/api/v1/sites/{site_b1.pk}/", {"name": "pwn"}, format="json").status_code == 404
-    assert (
-        c.post(f"/api/v1/sites/{site_b1.pk}/deactivate/", {"reason": "x"}, format="json").status_code == 404
-    )
+    assert c.post(f"/api/v1/sites/{site_b1.pk}/deactivate/", {"reason": "x"}, format="json").status_code == 404
     assert c.patch(f"/api/v1/zones/{zone_b.pk}/", {"name": "pwn"}, format="json").status_code == 404
     assert c.delete(f"/api/v1/calendars/{cal_b.pk}/").status_code == 404
     assert c.delete(f"/api/v1/calendar-holidays/{hol_b.pk}/").status_code == 404
     assert c.delete(f"/api/v1/site-contacts/{con_b.pk}/").status_code == 404
     # creating below foreign objects
     assert c.post("/api/v1/zones/", {"site": str(site_b1.pk), "name": "Z"}, format="json").status_code == 404
-    assert (
-        c.post(
-            "/api/v1/calendars/", {"site": str(site_b1.pk), "name": "C", "is_24x7": True}, format="json"
-        ).status_code
-        == 404
-    )
-    assert (
-        c.post(
-            "/api/v1/site-contacts/", {"site": str(site_b1.pk), "name": "C", "phone": "1"}, format="json"
-        ).status_code
-        == 404
-    )
+    assert c.post("/api/v1/calendars/", {"site": str(site_b1.pk), "name": "C", "is_24x7": True},
+                  format="json").status_code == 404
+    assert c.post("/api/v1/site-contacts/", {"site": str(site_b1.pk), "name": "C", "phone": "1"},
+                  format="json").status_code == 404
     # nothing changed, and lists never include the foreign records
     site_b1.refresh_from_db()
     assert site_b1.status == "ACTIVE" and site_b1.name == "Site B1"
-    for url in (
-        "/api/v1/sites/",
-        "/api/v1/zones/",
-        "/api/v1/calendars/",
-        "/api/v1/site-contacts/",
-        "/api/v1/calendar-holidays/",
-    ):
+    for url in ("/api/v1/sites/", "/api/v1/zones/", "/api/v1/calendars/", "/api/v1/site-contacts/",
+                "/api/v1/calendar-holidays/"):
         assert c.get(url).json()["count"] == 0, url
 
 
 def test_zone_with_foreign_parent_via_api_is_not_found(as_user, owner_a, org_a, site_a1, site_b1, make_zone):
     foreign = make_zone(site_b1, "F")
     r = as_user(owner_a, org_a).post(
-        "/api/v1/zones/", {"site": str(site_a1.pk), "name": "Z", "parent": str(foreign.pk)}, format="json"
-    )
+        "/api/v1/zones/", {"site": str(site_a1.pk), "name": "Z", "parent": str(foreign.pk)}, format="json")
     assert r.status_code == 404
     assert not Zone.objects.unscoped().filter(site=site_a1).exists()
 
@@ -405,16 +337,14 @@ def test_escalation_order_boundaries_in_the_service(org_a, site_a1, owner_a):
 
     assert MAX_ESCALATION_ORDER == 32767
     low = services.add_contact(site_a1, actor=owner_a, name="Low", phone="1", escalation_order=1)
-    top = services.add_contact(
-        site_a1, actor=owner_a, name="Top", phone="1", escalation_order=MAX_ESCALATION_ORDER
-    )
+    top = services.add_contact(site_a1, actor=owner_a, name="Top", phone="1", escalation_order=MAX_ESCALATION_ORDER)
     assert (low.escalation_order, top.escalation_order) == (1, 32767)
     for bad in (0, -3, MAX_ESCALATION_ORDER + 1, 99999999999):
         with pytest.raises(ValidationFailed) as exc:
             services.add_contact(site_a1, actor=owner_a, name=f"Bad{bad}", phone="1", escalation_order=bad)
         assert exc.value.code == "invalid_escalation_order"
     assert SiteContact.objects.filter(site=site_a1).count() == 2
-    with pytest.raises(ValidationFailed):  # appending after the maximum would overflow the column
+    with pytest.raises(ValidationFailed):          # appending after the maximum would overflow the column
         services.add_contact(site_a1, actor=owner_a, name="Overflow", phone="1")
     with pytest.raises(ValidationFailed):
         services.update_contact(low, actor=owner_a, escalation_order=MAX_ESCALATION_ORDER + 1)
@@ -428,9 +358,7 @@ def test_escalation_order_api_returns_4xx_never_500(as_user, owner_a, org_a, sit
     ok = c.post("/api/v1/site-contacts/", {**body, "escalation_order": 32767}, format="json")
     assert ok.status_code == 201 and ok.json()["escalation_order"] == 32767
     for bad in (32768, 99999999999, 0, -1, "abc", 1.5):
-        r = c.post(
-            "/api/v1/site-contacts/", {**body, "name": f"n{bad}", "escalation_order": bad}, format="json"
-        )
+        r = c.post("/api/v1/site-contacts/", {**body, "name": f"n{bad}", "escalation_order": bad}, format="json")
         assert r.status_code == 400, (bad, r.status_code, r.content)
         assert "escalation_order" in r.json()["error"]["details"] or r.json()["error"]["code"]
     kid = ok.json()["id"]
@@ -454,7 +382,5 @@ def test_escalation_order_ui_shows_a_validation_message(client, owner_a, site_a1
     assert client.post(url, {"name": "Max", "phone": "1", "escalation_order": "32767"}).status_code == 302
     assert SiteContact.objects.get(site=site_a1).escalation_order == 32767
     contact = SiteContact.objects.get(site=site_a1)
-    r = client.post(
-        f"/app/contacts/{contact.pk}/edit/", {"name": "Max", "phone": "1", "escalation_order": "40000"}
-    )
+    r = client.post(f"/app/contacts/{contact.pk}/edit/", {"name": "Max", "phone": "1", "escalation_order": "40000"})
     assert r.status_code == 400 and b"less than or equal to 32767" in r.content

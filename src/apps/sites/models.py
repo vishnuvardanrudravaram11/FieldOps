@@ -53,9 +53,7 @@ class Zone(TenantOwnedModel):
     Status = Status
 
     site = models.ForeignKey(Site, on_delete=models.PROTECT, related_name="zones")
-    parent = models.ForeignKey(
-        "self", null=True, blank=True, on_delete=models.PROTECT, related_name="children"
-    )
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
     zone_type = models.CharField(max_length=14, choices=ZoneType.choices, default=ZoneType.ZONE)
     code = models.CharField(max_length=30, blank=True)
     name = models.CharField(max_length=120)
@@ -67,18 +65,12 @@ class Zone(TenantOwnedModel):
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(
-                Lower("name"), "site", condition=models.Q(parent__isnull=True), name="uniq_zone_name_root"
-            ),
+                Lower("name"), "site", condition=models.Q(parent__isnull=True), name="uniq_zone_name_root"),
             models.UniqueConstraint(
-                Lower("name"),
-                "site",
-                "parent",
-                condition=models.Q(parent__isnull=False),
-                name="uniq_zone_name_under_parent",
-            ),
+                Lower("name"), "site", "parent", condition=models.Q(parent__isnull=False),
+                name="uniq_zone_name_under_parent"),
             models.UniqueConstraint(
-                Lower("code"), "site", condition=~models.Q(code=""), name="uniq_zone_code_per_site"
-            ),
+                Lower("code"), "site", condition=~models.Q(code=""), name="uniq_zone_code_per_site"),
         ]
         indexes = [models.Index(fields=["organization", "site"])]
 
@@ -107,8 +99,7 @@ class OperatingCalendar(TenantOwnedModel):
         constraints = [
             models.UniqueConstraint(Lower("name"), "site", name="uniq_calendar_name_per_site"),
             models.UniqueConstraint(
-                fields=["site"], condition=models.Q(is_default=True), name="uniq_default_calendar_per_site"
-            ),
+                fields=["site"], condition=models.Q(is_default=True), name="uniq_default_calendar_per_site"),
         ]
 
     def __str__(self):
@@ -122,9 +113,7 @@ class CalendarHoliday(TenantOwnedModel):
 
     class Meta:
         ordering = ["date"]
-        constraints = [
-            models.UniqueConstraint(fields=["calendar", "date"], name="uniq_holiday_per_calendar_date")
-        ]
+        constraints = [models.UniqueConstraint(fields=["calendar", "date"], name="uniq_holiday_per_calendar_date")]
 
     def __str__(self):
         return f"{self.name} ({self.date})"

@@ -20,8 +20,7 @@ class Attachment(TenantOwnedModel):
     sha256 = models.CharField(max_length=64)
     description = models.CharField(max_length=200, blank=True)
     read_permission = models.CharField(
-        max_length=80,
-        blank=True,
+        max_length=80, blank=True,
         help_text="Permission code required to download; blank = any active member of the organization.",
     )
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")

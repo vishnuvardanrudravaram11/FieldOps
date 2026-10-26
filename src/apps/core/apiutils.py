@@ -1,5 +1,4 @@
 """Small helpers shared by module APIs (pagination, schema parameters, site-aware permission checks)."""
-
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter
 

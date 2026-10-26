@@ -6,7 +6,6 @@ are NOT in the `public` schema that Supabase exposes through its REST Data API. 
 
 Env: SUPABASE_ADMIN_DATABASE_URL (admin connection), FIELDOPS_APP_PASSWORD (new role's password).
 """
-
 import os
 import sys
 
@@ -23,9 +22,7 @@ with psycopg.connect(admin_url, autocommit=True) as conn:
     if exists:
         print("role fieldops_app already exists (password left unchanged)")
     else:
-        conn.execute(
-            sql.SQL("CREATE ROLE fieldops_app LOGIN NOINHERIT PASSWORD {}").format(sql.Literal(app_pw))
-        )
+        conn.execute(sql.SQL("CREATE ROLE fieldops_app LOGIN NOINHERIT PASSWORD {}").format(sql.Literal(app_pw)))
         print("created role fieldops_app")
     conn.execute("GRANT fieldops_app TO CURRENT_USER")
     conn.execute("CREATE SCHEMA IF NOT EXISTS fieldops AUTHORIZATION fieldops_app")

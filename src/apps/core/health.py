@@ -30,6 +30,5 @@ def ready(request):
     except Exception:
         checks["cache"] = "error"
     healthy = all(v == "ok" for v in checks.values())
-    return JsonResponse(
-        {"status": "ok" if healthy else "degraded", "checks": checks}, status=200 if healthy else 503
-    )
+    return JsonResponse({"status": "ok" if healthy else "degraded", "checks": checks},
+                        status=200 if healthy else 503)

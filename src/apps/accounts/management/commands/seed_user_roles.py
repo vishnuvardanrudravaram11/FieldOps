@@ -27,15 +27,14 @@ class Command(BaseCommand):
 
         # 1. Organization Setup
         org, _ = Organization.objects.get_or_create(
-            code="APEX-IND",
+            slug="apex-industrial-technologies",
             defaults={
                 "name": "Apex Industrial Technologies Ltd",
-                "slug": "apex-industrial-technologies",
                 "contact_email": "operations@apexindustrial.example.com",
                 "contact_phone": "+94 11 289 9000",
             },
         )
-        self.stdout.write(self.style.SUCCESS(f"[OK] Organization: {org.name} ({org.code})"))
+        self.stdout.write(self.style.SUCCESS(f"[OK] Organization: {org.name} ({org.slug})"))
 
         # 2. Seed System Roles for the Organization
         roles_dict = seed_system_roles(org)
@@ -132,6 +131,15 @@ class Command(BaseCommand):
                 "is_staff": False,
                 "is_portal_client": True,
             },
+            {
+                "email": "client.new@apexindustrial.com",
+                "full_name": "Sarah Connor",
+                "job_title": "Client Facility Manager",
+                "role_key": "client_requester",
+                "is_platform_admin": False,
+                "is_staff": False,
+                "is_portal_client": True,
+            },
         ]
 
         # 4. Create Persona Users, Memberships & Assign Roles
@@ -154,7 +162,9 @@ class Command(BaseCommand):
 
             # Membership in organization
             membership, _ = Membership.objects.unscoped().get_or_create(
-                organization=org, user=user, defaults={"job_title": p["job_title"], "status": "ACTIVE"}
+                organization=org,
+                user=user,
+                defaults={"job_title": p["job_title"], "status": "ACTIVE"}
             )
             membership.status = "ACTIVE"
             membership.job_title = p["job_title"]
@@ -164,26 +174,34 @@ class Command(BaseCommand):
             role = Role.objects.unscoped().filter(organization=org, system_key=p["role_key"]).first()
             if role:
                 MembershipRole.objects.get_or_create(
-                    membership=membership, role=role, defaults={"site": None}
+                    membership=membership,
+                    role=role,
+                    defaults={"site": None}
                 )
 
-            # If portal client, setup PortalAccount
+            # If portal client, setup PortalAccount & initial asset grant
             if p.get("is_portal_client"):
-                PortalAccount.objects.unscoped().get_or_create(
+                portal_acc, _ = PortalAccount.objects.unscoped().get_or_create(
                     organization=org,
                     membership=membership,
-                    defaults={"company_name": "Acme Corporation", "is_enabled": True},
+                    defaults={"company_name": "Acme Corporation", "is_enabled": True}
                 )
+                from apps.assets.models import Asset
+                from apps.portal.models import PortalAssetGrant
+                first_asset = Asset.objects.filter(organization=org).exclude(status__in=["RETIRED", "DISPOSED"]).first()
+                if first_asset:
+                    PortalAssetGrant.objects.unscoped().get_or_create(
+                        organization=org,
+                        portal_account=portal_acc,
+                        asset=first_asset,
+                    )
 
-            created_users.append(
-                {
-                    "role": role.name if role else p["role_key"],
-                    "role_key": p["role_key"],
-                    "email": email,
-                    "name": p["full_name"],
-                }
-            )
 
-        self.stdout.write(
-            self.style.SUCCESS("\n[SUCCESS] Successfully seeded all user credentials and roles!")
-        )
+            created_users.append({
+                "role": role.name if role else p["role_key"],
+                "role_key": p["role_key"],
+                "email": email,
+                "name": p["full_name"],
+            })
+
+        self.stdout.write(self.style.SUCCESS("\n[SUCCESS] Successfully seeded all user credentials and roles!"))

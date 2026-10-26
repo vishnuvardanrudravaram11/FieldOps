@@ -5,7 +5,6 @@
 Goes through the real service layer (validation, audit), so the data is the same as data entered in the UI. For LOCAL
 development only: refuses to run when DEBUG is off unless FIELDOPS_ALLOW_DEMO_SEED=true (local docker stack). All users share the local-only password below (override with the
 environment variable FIELDOPS_DEMO_PASSWORD). Re-running is safe; existing records are left untouched."""
-
 import os
 from datetime import time
 
@@ -37,10 +36,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if not (settings.DEBUG or os.environ.get("FIELDOPS_ALLOW_DEMO_SEED") == "true"):
-            raise CommandError(
-                "seed_dev_demo is for local development only (DEBUG is off). "
-                "For the local docker stack set FIELDOPS_ALLOW_DEMO_SEED=true."
-            )
+            raise CommandError("seed_dev_demo is for local development only (DEBUG is off). "
+                               "For the local docker stack set FIELDOPS_ALLOW_DEMO_SEED=true.")
         from config.celery import app as celery_app
 
         celery_app.conf.task_always_eager = True  # invitation emails run inline; no Redis needed for seeding
@@ -50,23 +47,13 @@ class Command(BaseCommand):
 
         admin = User.objects.filter(email=PLATFORM_ADMIN[0]).first()
         if admin is None:
-            admin = User.objects.create_user(
-                email=PLATFORM_ADMIN[0],
-                password=password,
-                full_name=PLATFORM_ADMIN[1],
-                is_platform_admin=True,
-            )
+            admin = User.objects.create_user(email=PLATFORM_ADMIN[0], password=password,
+                                             full_name=PLATFORM_ADMIN[1], is_platform_admin=True)
 
         org = Organization.objects.filter(name=ORG_NAME).first()
         if org is None:
-            org, _ = tenancy.create_organization(
-                name=ORG_NAME,
-                owner_email=OWNER[0],
-                owner_name=OWNER[1],
-                actor=admin,
-                timezone_name="Asia/Kolkata",
-                country="IN",
-            )
+            org, _ = tenancy.create_organization(name=ORG_NAME, owner_email=OWNER[0], owner_name=OWNER[1],
+                                                 actor=admin, timezone_name="Asia/Kolkata", country="IN")
         owner = User.objects.get(email=OWNER[0])
         self._activate(owner, password)
 
@@ -94,32 +81,15 @@ class Command(BaseCommand):
         site = Site.objects.filter(code=code).first()
         if site:
             return site, False
-        site = site_services.create_site(
-            org,
-            actor=actor,
-            code=code,
-            name=name,
-            city=city,
-            country="IN",
-            timezone="Asia/Kolkata",
-            address=f"{name} Industrial Estate",
-            contact_name="Plant Manager",
-            contact_phone="+91 20 5550 0100",
-        )
-        site_services.create_calendar(
-            site,
-            actor=actor,
-            name="Day shift",
-            working_days=[1, 2, 3, 4, 5, 6],
-            start_time=time(8),
-            end_time=time(18),
-        )
-        site_services.add_contact(
-            site, actor=actor, name="Site Manager", role_title="Site Manager", phone="+91 20 5550 0101"
-        )
-        site_services.add_contact(
-            site, actor=actor, name="Regional Head", role_title="Escalation", email="regional@example.test"
-        )
+        site = site_services.create_site(org, actor=actor, code=code, name=name, city=city, country="IN",
+                                         timezone="Asia/Kolkata", address=f"{name} Industrial Estate",
+                                         contact_name="Plant Manager", contact_phone="+91 20 5550 0100")
+        site_services.create_calendar(site, actor=actor, name="Day shift", working_days=[1, 2, 3, 4, 5, 6],
+                                      start_time=time(8), end_time=time(18))
+        site_services.add_contact(site, actor=actor, name="Site Manager", role_title="Site Manager",
+                                  phone="+91 20 5550 0101")
+        site_services.add_contact(site, actor=actor, name="Regional Head", role_title="Escalation",
+                                  email="regional@example.test")
         return site, True
 
     def _seed_sites(self, org, actor):
@@ -127,11 +97,7 @@ class Command(BaseCommand):
         mumbai, _ = self._site(org, actor, "MUM-1", "Mumbai Depot", "Mumbai")
         if not created:
             return
-        block = site_services.create_zone(
-            pune, actor=actor, name="Block A", zone_type="BUILDING", code="BLK-A"
-        )
+        block = site_services.create_zone(pune, actor=actor, name="Block A", zone_type="BUILDING", code="BLK-A")
         floor = site_services.create_zone(pune, actor=actor, name="Ground floor", parent=block)
-        site_services.create_zone(
-            pune, actor=actor, name="Generator hall", parent=floor, zone_type="SERVICE_AREA"
-        )
+        site_services.create_zone(pune, actor=actor, name="Generator hall", parent=floor, zone_type="SERVICE_AREA")
         site_services.create_zone(mumbai, actor=actor, name="Warehouse", zone_type="BUILDING")

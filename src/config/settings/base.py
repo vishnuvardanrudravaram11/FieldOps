@@ -1,5 +1,4 @@
 """Base settings shared by every environment. All secrets/config come from the environment."""
-
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -70,6 +69,18 @@ INSTALLED_APPS = [
     "apps.notifications",
     "apps.files",
     "apps.sites",
+    "apps.assets",
+    "apps.identification",
+    "apps.incidents",
+    "apps.workorders",
+    "apps.inventory",
+    "apps.maintenance",
+    "apps.sla",
+    "apps.contracts",
+    "apps.checklists",
+    "apps.portal",
+    "apps.workspace",
+    "apps.dashboards",
     "apps.ui",
 ]
 
@@ -160,17 +171,25 @@ CORS_ALLOWED_ORIGINS = env_list("DJANGO_CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = False
 
 # --- Cache / Redis ----------------------------------------------------------------------------
-REDIS_URL = env("REDIS_URL", "redis://localhost:6379/0")
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": REDIS_URL,
-        "KEY_PREFIX": "fieldops",
+REDIS_URL = env("REDIS_URL", "").strip()
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "fieldops",
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "KEY_PREFIX": "fieldops",
+        }
+    }
 
 # --- Celery -----------------------------------------------------------------------------------
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", REDIS_URL)
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", REDIS_URL or "memory://")
 CELERY_RESULT_BACKEND = None
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_TIME_LIMIT = 60 * 10
@@ -180,6 +199,10 @@ CELERY_BEAT_SCHEDULE = {
     "clear-expired-sessions": {
         "task": "apps.core.tasks.clear_expired_sessions",
         "schedule": 60 * 60 * 24,
+    },
+    "generate-due-maintenance": {
+        "task": "apps.maintenance.tasks.fan_out_maintenance",
+        "schedule": 60 * 15,
     },
 }
 
@@ -264,9 +287,7 @@ SPECTACULAR_SETTINGS = {
     "All tenant data is scoped to the caller's active organization.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
-    "SERVE_PERMISSIONS": [
-        "rest_framework.permissions.AllowAny"
-    ],  # docs/schema list endpoint names only, never tenant data (D: public docs for testers)
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],  # docs/schema list endpoint names only, never tenant data (D: public docs for testers)
     "COMPONENT_SPLIT_REQUEST": True,
     "ENUM_NAME_OVERRIDES": {
         "SiteStatusEnum": "apps.sites.models.Status",
@@ -282,9 +303,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "filters": {"request_id": {"()": "apps.core.logging.RequestIdFilter"}},
     "formatters": {"json": {"()": "apps.core.logging.JsonFormatter"}},
-    "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "json", "filters": ["request_id"]}
-    },
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "json", "filters": ["request_id"]}},
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
     "loggers": {
         "django.request": {"handlers": ["console"], "level": "WARNING", "propagate": False},

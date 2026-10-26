@@ -43,15 +43,11 @@ class MeView(APIView):
     @extend_schema(summary="Current user and organization memberships", responses=MeSerializer)
     def get(self, request):
         u = request.user
-        return Response(
-            {
-                "id": str(u.pk),
-                "email": u.email,
-                "full_name": u.full_name,
-                "is_platform_admin": u.is_platform_admin,
-                "organizations": [
-                    {"id": str(m.organization_id), "slug": m.organization.slug, "name": m.organization.name}
-                    for m in selectors.active_memberships(u)
-                ],
-            }
-        )
+        return Response({
+            "id": str(u.pk), "email": u.email, "full_name": u.full_name,
+            "is_platform_admin": u.is_platform_admin,
+            "organizations": [
+                {"id": str(m.organization_id), "slug": m.organization.slug, "name": m.organization.name}
+                for m in selectors.active_memberships(u)
+            ],
+        })

@@ -11,7 +11,6 @@ unscoped. Celery tasks MUST wrap tenant work in ``tenant_context(org)``.
 ``Model.objects.unscoped()`` is the single greppable escape hatch. It is permitted only in the modules
 listed in ``tests/test_tenant_isolation.py::test_unscoped_is_only_used_in_trusted_modules``.
 """
-
 from __future__ import annotations
 
 import contextvars

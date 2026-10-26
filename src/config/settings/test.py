@@ -1,10 +1,10 @@
 """Test settings. Uses a dedicated PostgreSQL database (Django prefixes it with test_)."""
-
 import os
 import secrets
 
 os.environ.setdefault("DJANGO_SECRET_KEY", secrets.token_urlsafe(50))  # ephemeral, never persisted
-os.environ.setdefault("DATABASE_URL", "postgres://fieldops:fieldops@localhost:5432/fieldops")
+_pg_pass = os.environ.get("POSTGRES_PASSWORD", "fieldops")
+os.environ.setdefault("DATABASE_URL", f"postgres://fieldops:{_pg_pass}@localhost:5432/fieldops")
 
 from .base import *  # noqa: E402,F401,F403
 
@@ -27,3 +27,4 @@ REST_FRAMEWORK = {  # noqa: F405
 }
 LOGGING["root"]["level"] = "WARNING"  # noqa: F405
 MIDDLEWARE = [m for m in MIDDLEWARE if "whitenoise" not in m]  # noqa: F405
+WORKORDER_PROVISIONAL_CHECKLIST_ENABLED = True

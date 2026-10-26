@@ -17,13 +17,8 @@ def test_unauthenticated_gets_401(api):
 
 def test_owner_allowed_technician_denied_matrix(as_user, owner_a, tech_a, org_a):
     owner, tech = as_user(owner_a, org_a), as_user(tech_a, org_a)
-    for method, url in [
-        ("get", "/api/v1/members/"),
-        ("get", "/api/v1/roles/"),
-        ("get", "/api/v1/audit-logs/"),
-        ("get", "/api/v1/organization/"),
-        ("get", "/api/v1/permissions/"),
-    ]:
+    for method, url in [("get", "/api/v1/members/"), ("get", "/api/v1/roles/"), ("get", "/api/v1/audit-logs/"),
+                        ("get", "/api/v1/organization/"), ("get", "/api/v1/permissions/")]:
         assert getattr(owner, method)(url).status_code == 200, url
         assert getattr(tech, method)(url).status_code == 403, url
     body = {"email": "n@alpha.test", "full_name": "N", "role_ids": []}
@@ -39,10 +34,7 @@ def test_technician_can_use_own_notifications(as_user, tech_a, org_a):
 def test_unmapped_action_is_denied(as_user, owner_a, org_a):
     # roles viewset maps no 'partial_update'; PATCH must be refused even for the Owner
     role = Role.objects.unscoped().filter(organization=org_a, system_key="technician").first()
-    assert as_user(owner_a, org_a).patch(f"/api/v1/roles/{role.pk}/", {}, format="json").status_code in (
-        403,
-        405,
-    )
+    assert as_user(owner_a, org_a).patch(f"/api/v1/roles/{role.pk}/", {}, format="json").status_code in (403, 405)
 
 
 def test_platform_admin_has_no_tenant_permissions(as_user, platform_admin, org_a):
@@ -51,6 +43,8 @@ def test_platform_admin_has_no_tenant_permissions(as_user, platform_admin, org_a
     c.credentials(HTTP_X_ORGANIZATION=org_a.slug)
     r = c.get("/api/v1/members/")
     assert r.status_code == 403 and r.json()["error"]["code"] == "not_a_member"
+
+
 
 
 def test_owner_role_is_locked_and_system_role_undeletable(as_user, owner_a, org_a):
@@ -64,23 +58,17 @@ def test_owner_role_is_locked_and_system_role_undeletable(as_user, owner_a, org_
 
 def test_org_can_define_custom_roles_and_edit_defaults(as_user, owner_a, tech_a, org_a):
     c = as_user(owner_a, org_a)
-    r = c.post(
-        "/api/v1/roles/", {"name": "Auditor Lite", "permissions": ["audit.view", "user.view"]}, format="json"
-    )
+    r = c.post("/api/v1/roles/", {"name": "Auditor Lite", "permissions": ["audit.view", "user.view"]}, format="json")
     assert r.status_code == 201
     assert sorted(r.json()["permissions"]) == ["audit.view", "user.view"]
     tech_role = Role.objects.unscoped().get(organization=org_a, system_key="technician")
-    r = c.put(
-        f"/api/v1/roles/{tech_role.pk}/", {"name": "Technician", "permissions": ["user.view"]}, format="json"
-    )
+    r = c.put(f"/api/v1/roles/{tech_role.pk}/", {"name": "Technician", "permissions": ["user.view"]}, format="json")
     assert r.status_code == 200
     assert as_user(tech_a, org_a).get("/api/v1/members/").status_code == 200  # newly granted by the org
 
 
 def test_unknown_permission_rejected(as_user, owner_a, org_a):
-    r = as_user(owner_a, org_a).post(
-        "/api/v1/roles/", {"name": "Bad", "permissions": ["nope.nope"]}, format="json"
-    )
+    r = as_user(owner_a, org_a).post("/api/v1/roles/", {"name": "Bad", "permissions": ["nope.nope"]}, format="json")
     assert r.status_code == 400
 
 
@@ -138,7 +126,6 @@ def test_role_sync_is_additive_and_picks_up_new_permissions(org_a):
 
 def test_seeded_roles_exist_for_every_template(org_a):
     from apps.rbac.role_templates import TEMPLATES
-
     keys = set(Role.objects.unscoped().filter(organization=org_a).values_list("system_key", flat=True))
     assert {t.key for t in TEMPLATES} <= keys
 

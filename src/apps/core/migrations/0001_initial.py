@@ -6,38 +6,26 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
+
     initial = True
 
     dependencies = [
-        ("tenancy", "0001_initial"),
+        ('tenancy', '0001_initial'),
     ]
 
     operations = [
         migrations.CreateModel(
-            name="DocumentSequence",
+            name='DocumentSequence',
             fields=[
-                (
-                    "id",
-                    models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
-                ),
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("updated_at", models.DateTimeField(auto_now=True)),
-                ("key", models.CharField(max_length=40)),
-                ("last_value", models.PositiveIntegerField(default=0)),
-                (
-                    "organization",
-                    models.ForeignKey(
-                        editable=False,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="+",
-                        to="tenancy.organization",
-                    ),
-                ),
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('key', models.CharField(max_length=40)),
+                ('last_value', models.PositiveIntegerField(default=0)),
+                ('organization', models.ForeignKey(editable=False, on_delete=django.db.models.deletion.PROTECT, related_name='+', to='tenancy.organization')),
             ],
             options={
-                "constraints": [
-                    models.UniqueConstraint(fields=("organization", "key"), name="uniq_sequence_per_org_key")
-                ],
+                'constraints': [models.UniqueConstraint(fields=('organization', 'key'), name='uniq_sequence_per_org_key')],
             },
         ),
     ]

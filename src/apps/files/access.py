@@ -1,7 +1,6 @@
 """Per-target read authorization for attachments. A module that attaches files to its own model registers a
 checker ``(membership, target) -> bool`` so downloads honour that module's rules (for example site scope).
 Targets without a checker fall back to the attachment's ``read_permission`` (organization-wide)."""
-
 from collections.abc import Callable
 
 _CHECKERS: dict[str, Callable] = {}

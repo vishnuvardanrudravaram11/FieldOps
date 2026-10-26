@@ -6,7 +6,6 @@ A transition is: (from_state, action) -> to_state, optionally guarded by a calla
 layer) is responsible for permission checks, wrapping in ``transaction.atomic`` and writing the audit
 record; ``StateMachine.apply`` performs the validated state change and returns (previous, new).
 """
-
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable

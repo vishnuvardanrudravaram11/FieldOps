@@ -1,5 +1,4 @@
 """Structured JSON logging with request correlation."""
-
 import contextvars
 import json
 import logging

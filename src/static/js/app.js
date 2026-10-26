@@ -57,6 +57,24 @@ document.addEventListener("change", function (e) {
   window.location.search = params.toString();
 });
 
+/* Work-order HTMX actions report success/error through server-triggered events. */
+document.body.addEventListener("workOrderChanged", function (event) {
+  showWorkOrderMessage(event.detail && event.detail.message || "Work order updated.", false);
+});
+document.body.addEventListener("workOrderActionError", function (event) {
+  showWorkOrderMessage(event.detail && event.detail.message || "The work-order action failed. Refresh and retry.", true);
+});
+function showWorkOrderMessage(message, isError) {
+  var host = document.getElementById("main");
+  if (!host) return;
+  var notice = document.createElement("div");
+  notice.className = isError ? "wo-live-message is-error" : "wo-live-message";
+  notice.setAttribute("role", isError ? "alert" : "status");
+  notice.textContent = message;
+  host.prepend(notice);
+  window.setTimeout(function () { notice.remove(); }, 6000);
+}
+
 /* Interactive Hierarchy Hub & Tree Controls */
 document.addEventListener("DOMContentLoaded", function () {
   // Tree Node Expand / Collapse Toggle
@@ -198,4 +216,70 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
   });
+
+  // Global Toast auto-dismiss handler
+  function initAutoDismiss() {
+    var alerts = document.querySelectorAll(".fx-toast-message:not([data-dismiss-queued]), [data-auto-dismiss]:not([data-dismiss-queued])");
+    alerts.forEach(function (el) {
+      el.setAttribute("data-dismiss-queued", "1");
+      var timeoutMs = parseInt(el.getAttribute("data-auto-dismiss") || "4000", 10);
+      var timer = null;
+      var remaining = timeoutMs;
+      var start = Date.now();
+
+      function startTimer() {
+        start = Date.now();
+        timer = setTimeout(function () {
+          dismissToast(el);
+        }, remaining);
+      }
+
+      function pauseTimer() {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+          remaining -= (Date.now() - start);
+          if (remaining < 400) remaining = 400;
+        }
+      }
+
+      function dismissToast(item) {
+        if (!item || item.getAttribute("data-dismissing") === "1") return;
+        item.setAttribute("data-dismissing", "1");
+        item.style.transition = "opacity 0.35s ease, max-height 0.35s ease, margin 0.35s ease, padding 0.35s ease";
+        item.style.opacity = "0";
+        item.style.maxHeight = item.offsetHeight + "px";
+        item.offsetHeight;
+        item.style.maxHeight = "0px";
+        item.style.marginTop = "0px";
+        item.style.marginBottom = "0px";
+        item.style.paddingTop = "0px";
+        item.style.paddingBottom = "0px";
+        item.style.overflow = "hidden";
+        setTimeout(function () {
+          if (item && item.parentNode) {
+            var parent = item.closest(".fx-toast-container");
+            item.remove();
+            if (parent && parent.children.length === 0) parent.remove();
+          }
+        }, 360);
+      }
+
+      startTimer();
+      el.addEventListener("mouseenter", pauseTimer);
+      el.addEventListener("mouseleave", startTimer);
+
+      var closeBtn = el.querySelector(".btn-close");
+      if (closeBtn) {
+        closeBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          dismissToast(el);
+        });
+      }
+    });
+  }
+
+  initAutoDismiss();
+  document.body.addEventListener("htmx:afterSettle", initAutoDismiss);
+  document.body.addEventListener("htmx:afterSwap", initAutoDismiss);
 });

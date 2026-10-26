@@ -2,7 +2,6 @@
 
 This module (and rbac.services / tenancy.services) are the only places allowed to use
 ``Manager.unscoped()``: they are the trusted bridge between identity and tenant context."""
-
 from __future__ import annotations
 
 from apps.core.exceptions import PermissionDenied
@@ -21,9 +20,7 @@ def active_memberships(user):
     )
 
 
-def resolve_membership(
-    user, *, org_key: str | None = None, session_org_id: str | None = None, candidates=None
-):
+def resolve_membership(user, *, org_key: str | None = None, session_org_id: str | None = None, candidates=None):
     """Returns the active Membership for this request, or None if the user has not chosen/cannot be
     defaulted. Raises PermissionDenied for explicit-but-invalid selections and suspended organizations.
     ``candidates`` lets a caller that already loaded the user's active memberships avoid a second query."""
@@ -33,10 +30,7 @@ def resolve_membership(
         candidates = list(active_memberships(user))
     chosen = None
     if org_key:
-        chosen = next(
-            (m for m in candidates if m.organization.slug == org_key or str(m.organization_id) == org_key),
-            None,
-        )
+        chosen = next((m for m in candidates if m.organization.slug == org_key or str(m.organization_id) == org_key), None)
         if chosen is None:
             raise PermissionDenied("You are not a member of this organization.", code="not_a_member")
     elif session_org_id:
