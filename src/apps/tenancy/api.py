@@ -7,7 +7,6 @@ Every tenant API view mixes in ``TenantAPIMixin`` and declares which permission 
 
 An action with no mapping is DENIED (fail closed).
 """
-
 from django.conf import settings
 from rest_framework import permissions
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
@@ -40,11 +39,8 @@ class TenantAPIMixin:
         header = request.headers.get(settings.ORGANIZATION_HEADER)
         try:
             membership = selectors.resolve_membership(
-                user,
-                org_key=header,
-                session_org_id=request.session.get(selectors.SESSION_KEY)
-                if hasattr(request, "session") and not header
-                else None,
+                user, org_key=header, session_org_id=request.session.get(selectors.SESSION_KEY)
+                if hasattr(request, "session") and not header else None,
             )
         except DomainPermissionDenied as exc:
             raise DRFPermissionDenied(exc.message, code=exc.code) from exc

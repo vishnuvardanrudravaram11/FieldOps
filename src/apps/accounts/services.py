@@ -1,5 +1,4 @@
 """Account lifecycle: invitation/activation tokens + emails, membership activation, password events."""
-
 from __future__ import annotations
 
 from django.conf import settings
@@ -44,14 +43,7 @@ def activate_pending_memberships(user, *, request=None) -> int:
         m.status = Membership.Status.ACTIVE
         m.activated_at = timezone.now()
         m.save(update_fields=["status", "activated_at", "updated_at"])
-        audit.record(
-            "user.activated",
-            actor=user,
-            organization=m.organization,
-            target=m,
-            target_repr=user.email,
-            after={"status": m.status},
-            request=request,
-        )
+        audit.record("user.activated", actor=user, organization=m.organization, target=m,
+                     target_repr=user.email, after={"status": m.status}, request=request)
         count += 1
     return count

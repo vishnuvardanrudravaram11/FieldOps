@@ -5,9 +5,7 @@ from .models import User
 
 
 class EmailAuthenticationForm(AuthenticationForm):
-    username = forms.EmailField(
-        label="Email", widget=forms.EmailInput(attrs={"autofocus": True, "autocomplete": "username"})
-    )
+    username = forms.EmailField(label="Email", widget=forms.EmailInput(attrs={"autofocus": True, "autocomplete": "username"}))
     error_messages = {
         "invalid_login": "Invalid email or password.",
         "inactive": "This account is inactive.",

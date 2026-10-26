@@ -3,7 +3,6 @@
 The extension must be allowed, the *content* (magic bytes) must match the extension family, and the stored
 file name is a random UUID - the client-supplied name is kept only as metadata (never used in paths).
 """
-
 import os
 import re
 import uuid

@@ -20,27 +20,9 @@ class SiteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Site
-        fields = [
-            "id",
-            "code",
-            "name",
-            "description",
-            "address",
-            "city",
-            "state_region",
-            "postal_code",
-            "country",
-            "timezone",
-            "status",
-            "status_reason",
-            "contact_name",
-            "contact_email",
-            "contact_phone",
-            "zone_count",
-            "asset_count",
-            "created_at",
-            "updated_at",
-        ]
+        fields = ["id", "code", "name", "description", "address", "city", "state_region", "postal_code",
+                  "country", "timezone", "status", "status_reason", "contact_name", "contact_email",
+                  "contact_phone", "zone_count", "asset_count", "created_at", "updated_at"]
         read_only_fields = fields
 
 
@@ -69,21 +51,8 @@ class ZoneSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Zone
-        fields = [
-            "id",
-            "site",
-            "site_code",
-            "parent",
-            "parent_name",
-            "zone_type",
-            "code",
-            "name",
-            "description",
-            "status",
-            "status_reason",
-            "created_at",
-            "updated_at",
-        ]
+        fields = ["id", "site", "site_code", "parent", "parent_name", "zone_type", "code", "name", "description",
+                  "status", "status_reason", "created_at", "updated_at"]
         read_only_fields = fields
 
 
@@ -129,30 +98,15 @@ class CalendarSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OperatingCalendar
-        fields = [
-            "id",
-            "site",
-            "site_code",
-            "name",
-            "working_days",
-            "is_24x7",
-            "start_time",
-            "end_time",
-            "is_default",
-            "notes",
-            "holidays",
-            "created_at",
-            "updated_at",
-        ]
+        fields = ["id", "site", "site_code", "name", "working_days", "is_24x7", "start_time", "end_time",
+                  "is_default", "notes", "holidays", "created_at", "updated_at"]
         read_only_fields = fields
 
 
 class CalendarWriteSerializer(serializers.Serializer):
     site = serializers.UUIDField()
     name = serializers.CharField(max_length=100)
-    working_days = serializers.ListField(
-        child=serializers.IntegerField(min_value=1, max_value=7), required=False
-    )
+    working_days = serializers.ListField(child=serializers.IntegerField(min_value=1, max_value=7), required=False)
     is_24x7 = serializers.BooleanField(required=False)
     start_time = serializers.TimeField(required=False, allow_null=True)
     end_time = serializers.TimeField(required=False, allow_null=True)
@@ -169,17 +123,7 @@ class ContactSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SiteContact
-        fields = [
-            "id",
-            "site",
-            "site_code",
-            "name",
-            "role_title",
-            "phone",
-            "email",
-            "escalation_order",
-            "notes",
-        ]
+        fields = ["id", "site", "site_code", "name", "role_title", "phone", "email", "escalation_order", "notes"]
         read_only_fields = fields
 
 
@@ -199,15 +143,8 @@ class ContactUpdateSerializer(ContactWriteSerializer):
 
 def _node(n) -> dict:
     z = n["zone"]
-    return {
-        "id": str(z.pk),
-        "name": z.name,
-        "code": z.code,
-        "zone_type": z.zone_type,
-        "status": z.status,
-        "asset_count": n["asset_count"],
-        "children": [_node(c) for c in n["children"]],
-    }
+    return {"id": str(z.pk), "name": z.name, "code": z.code, "zone_type": z.zone_type, "status": z.status,
+            "asset_count": n["asset_count"], "children": [_node(c) for c in n["children"]]}
 
 
 def _validated(serializer_cls, request, partial=False):
@@ -222,13 +159,8 @@ def _validated(serializer_cls, request, partial=False):
 @extend_schema(parameters=[ID_PARAM])
 class SiteViewSet(TenantAPIMixin, viewsets.ViewSet):
     permission_map = {
-        "list": "site.view",
-        "retrieve": "site.view",
-        "create": "site.create",
-        "partial_update": "site.update",
-        "deactivate": "site.deactivate",
-        "reactivate": "site.deactivate",
-        "tree": "zone.view",
+        "list": "site.view", "retrieve": "site.view", "create": "site.create", "partial_update": "site.update",
+        "deactivate": "site.deactivate", "reactivate": "site.deactivate", "tree": "zone.view",
     }
 
     def _site(self, request, pk, code=None):
@@ -237,10 +169,8 @@ class SiteViewSet(TenantAPIMixin, viewsets.ViewSet):
             require_permission(request.membership, code, site)
         return site
 
-    @extend_schema(
-        parameters=[query_param("q", "code / name / city"), query_param("status", "ACTIVE|INACTIVE")],
-        responses=SiteSerializer(many=True),
-    )
+    @extend_schema(parameters=[query_param("q", "code / name / city"), query_param("status", "ACTIVE|INACTIVE")],
+                   responses=SiteSerializer(many=True))
     def list(self, request):
         qs = selectors.site_list(request.membership, request.organization, request.query_params)
         return paginate(request, qs, SiteSerializer)
@@ -259,28 +189,21 @@ class SiteViewSet(TenantAPIMixin, viewsets.ViewSet):
     def partial_update(self, request, pk=None):
         site = self._site(request, pk, "site.update")
         d = _validated(SiteWriteSerializer, request, partial=True)
-        return Response(
-            SiteSerializer(services.update_site(site, actor=request.user, request=request, **d)).data
-        )
+        return Response(SiteSerializer(services.update_site(site, actor=request.user, request=request, **d)).data)
 
     @extend_schema(request=ReasonSerializer, responses=SiteSerializer)
     @action(detail=True, methods=["post"])
     def deactivate(self, request, pk=None):
         site = self._site(request, pk, "site.deactivate")
         d = _validated(ReasonSerializer, request)
-        return Response(
-            SiteSerializer(
-                services.deactivate_site(site, reason=d["reason"], actor=request.user, request=request)
-            ).data
-        )
+        return Response(SiteSerializer(
+            services.deactivate_site(site, reason=d["reason"], actor=request.user, request=request)).data)
 
     @extend_schema(request=None, responses=SiteSerializer)
     @action(detail=True, methods=["post"])
     def reactivate(self, request, pk=None):
         site = self._site(request, pk, "site.deactivate")
-        return Response(
-            SiteSerializer(services.reactivate_site(site, actor=request.user, request=request)).data
-        )
+        return Response(SiteSerializer(services.reactivate_site(site, actor=request.user, request=request)).data)
 
     @extend_schema(responses=ZoneNodeSerializer(many=True))
     @action(detail=True, methods=["get"])
@@ -293,12 +216,8 @@ class SiteViewSet(TenantAPIMixin, viewsets.ViewSet):
 @extend_schema(parameters=[ID_PARAM])
 class ZoneViewSet(TenantAPIMixin, viewsets.ViewSet):
     permission_map = {
-        "list": "zone.view",
-        "retrieve": "zone.view",
-        "create": "zone.create",
-        "partial_update": "zone.update",
-        "deactivate": "zone.deactivate",
-        "reactivate": "zone.deactivate",
+        "list": "zone.view", "retrieve": "zone.view", "create": "zone.create", "partial_update": "zone.update",
+        "deactivate": "zone.deactivate", "reactivate": "zone.deactivate",
     }
 
     def _zone(self, request, pk, code=None):
@@ -315,20 +234,13 @@ class ZoneViewSet(TenantAPIMixin, viewsets.ViewSet):
             raise NotFound("Location not found.")
         return parent
 
-    @extend_schema(
-        parameters=[
-            query_param("site", "site id", OpenApiTypes.UUID),
-            query_param("parent", "parent location id, or 'root'"),
-            query_param("q"),
-            query_param("zone_type"),
-            query_param("status"),
-        ],
-        responses=ZoneSerializer(many=True),
-    )
+    @extend_schema(parameters=[query_param("site", "site id", OpenApiTypes.UUID),
+                               query_param("parent", "parent location id, or 'root'"), query_param("q"),
+                               query_param("zone_type"), query_param("status")],
+                   responses=ZoneSerializer(many=True))
     def list(self, request):
-        qs = selectors.filter_zones(
-            selectors.zones_for(request.membership, request.organization), request.query_params
-        )
+        qs = selectors.filter_zones(selectors.zones_for(request.membership, request.organization),
+                                    request.query_params)
         return paginate(request, qs.order_by("site__code", "name"), ZoneSerializer)
 
     @extend_schema(responses=ZoneSerializer)
@@ -358,30 +270,20 @@ class ZoneViewSet(TenantAPIMixin, viewsets.ViewSet):
     def deactivate(self, request, pk=None):
         zone = self._zone(request, pk, "zone.deactivate")
         d = _validated(ReasonSerializer, request)
-        return Response(
-            ZoneSerializer(
-                services.deactivate_zone(zone, reason=d["reason"], actor=request.user, request=request)
-            ).data
-        )
+        return Response(ZoneSerializer(
+            services.deactivate_zone(zone, reason=d["reason"], actor=request.user, request=request)).data)
 
     @extend_schema(request=None, responses=ZoneSerializer)
     @action(detail=True, methods=["post"])
     def reactivate(self, request, pk=None):
         zone = self._zone(request, pk, "zone.deactivate")
-        return Response(
-            ZoneSerializer(services.reactivate_zone(zone, actor=request.user, request=request)).data
-        )
+        return Response(ZoneSerializer(services.reactivate_zone(zone, actor=request.user, request=request)).data)
 
 
 @extend_schema(parameters=[ID_PARAM])
 class CalendarViewSet(TenantAPIMixin, viewsets.ViewSet):
-    permission_map = {
-        "list": "calendar.view",
-        "retrieve": "calendar.view",
-        "create": "calendar.create",
-        "partial_update": "calendar.update",
-        "destroy": "calendar.delete",
-    }
+    permission_map = {"list": "calendar.view", "retrieve": "calendar.view", "create": "calendar.create",
+                      "partial_update": "calendar.update", "destroy": "calendar.delete"}
 
     def _cal(self, request, pk, code=None):
         cal = selectors.get_calendar(request.membership, request.organization, pk)
@@ -389,10 +291,8 @@ class CalendarViewSet(TenantAPIMixin, viewsets.ViewSet):
             require_permission(request.membership, code, cal.site)
         return cal
 
-    @extend_schema(
-        parameters=[query_param("site", "site id", OpenApiTypes.UUID)],
-        responses=CalendarSerializer(many=True),
-    )
+    @extend_schema(parameters=[query_param("site", "site id", OpenApiTypes.UUID)],
+                   responses=CalendarSerializer(many=True))
     def list(self, request):
         qs = selectors.calendars_for(request.membership, request.organization)
         if request.query_params.get("site"):
@@ -411,9 +311,7 @@ class CalendarViewSet(TenantAPIMixin, viewsets.ViewSet):
     @extend_schema(request=CalendarWriteSerializer, responses={201: CalendarSerializer})
     def create(self, request):
         d = _validated(CalendarWriteSerializer, request)
-        site = selectors.get_site_for(
-            request.membership, request.organization, d.pop("site"), "calendar.create"
-        )
+        site = selectors.get_site_for(request.membership, request.organization, d.pop("site"), "calendar.create")
         cal = services.create_calendar(site, actor=request.user, request=request, **d)
         return Response(CalendarSerializer(cal).data, status=status.HTTP_201_CREATED)
 
@@ -422,9 +320,8 @@ class CalendarViewSet(TenantAPIMixin, viewsets.ViewSet):
         cal = self._cal(request, pk, "calendar.update")
         d = _validated(CalendarUpdateSerializer, request, partial=True)
         cal = services.update_calendar(cal, actor=request.user, request=request, **d)
-        return Response(
-            CalendarSerializer(selectors.get_calendar(request.membership, request.organization, cal.pk)).data
-        )
+        return Response(CalendarSerializer(selectors.get_calendar(request.membership, request.organization,
+                                                                  cal.pk)).data)
 
     @extend_schema(responses={204: None})
     def destroy(self, request, pk=None):
@@ -437,10 +334,8 @@ class CalendarViewSet(TenantAPIMixin, viewsets.ViewSet):
 class HolidayViewSet(TenantAPIMixin, viewsets.ViewSet):
     permission_map = {"list": "calendar.view", "create": "calendar.update", "destroy": "calendar.update"}
 
-    @extend_schema(
-        parameters=[query_param("calendar", "calendar id", OpenApiTypes.UUID)],
-        responses=HolidaySerializer(many=True),
-    )
+    @extend_schema(parameters=[query_param("calendar", "calendar id", OpenApiTypes.UUID)],
+                   responses=HolidaySerializer(many=True))
     def list(self, request):
         import uuid
 
@@ -462,9 +357,7 @@ class HolidayViewSet(TenantAPIMixin, viewsets.ViewSet):
 
     @extend_schema(responses={204: None})
     def destroy(self, request, pk=None):
-        h = selectors.scoped_get(
-            selectors.holidays_for(request.membership, request.organization), pk, "Holiday"
-        )
+        h = selectors.scoped_get(selectors.holidays_for(request.membership, request.organization), pk, "Holiday")
         require_permission(request.membership, "calendar.update", h.calendar.site)
         services.remove_holiday(h, actor=request.user, request=request)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -472,25 +365,17 @@ class HolidayViewSet(TenantAPIMixin, viewsets.ViewSet):
 
 @extend_schema(parameters=[ID_PARAM])
 class ContactViewSet(TenantAPIMixin, viewsets.ViewSet):
-    permission_map = {
-        "list": "site.view",
-        "retrieve": "site.view",
-        "create": "site.contact.manage",
-        "partial_update": "site.contact.manage",
-        "destroy": "site.contact.manage",
-    }
+    permission_map = {"list": "site.view", "retrieve": "site.view", "create": "site.contact.manage",
+                      "partial_update": "site.contact.manage", "destroy": "site.contact.manage"}
 
     def _contact(self, request, pk, code=None):
-        c = selectors.scoped_get(
-            selectors.contacts_for(request.membership, request.organization), pk, "Contact"
-        )
+        c = selectors.scoped_get(selectors.contacts_for(request.membership, request.organization), pk, "Contact")
         if code:
             require_permission(request.membership, code, c.site)
         return c
 
-    @extend_schema(
-        parameters=[query_param("site", "site id", OpenApiTypes.UUID)], responses=ContactSerializer(many=True)
-    )
+    @extend_schema(parameters=[query_param("site", "site id", OpenApiTypes.UUID)],
+                   responses=ContactSerializer(many=True))
     def list(self, request):
         import uuid
 
@@ -509,9 +394,8 @@ class ContactViewSet(TenantAPIMixin, viewsets.ViewSet):
     @extend_schema(request=ContactWriteSerializer, responses={201: ContactSerializer})
     def create(self, request):
         d = _validated(ContactWriteSerializer, request)
-        site = selectors.get_site_for(
-            request.membership, request.organization, d.pop("site"), "site.contact.manage"
-        )
+        site = selectors.get_site_for(request.membership, request.organization, d.pop("site"),
+                                      "site.contact.manage")
         c = services.add_contact(site, actor=request.user, request=request, **d)
         return Response(ContactSerializer(c).data, status=status.HTTP_201_CREATED)
 
@@ -519,13 +403,10 @@ class ContactViewSet(TenantAPIMixin, viewsets.ViewSet):
     def partial_update(self, request, pk=None):
         c = self._contact(request, pk, "site.contact.manage")
         d = _validated(ContactUpdateSerializer, request, partial=True)
-        return Response(
-            ContactSerializer(services.update_contact(c, actor=request.user, request=request, **d)).data
-        )
+        return Response(ContactSerializer(services.update_contact(c, actor=request.user, request=request, **d)).data)
 
     @extend_schema(responses={204: None})
     def destroy(self, request, pk=None):
-        services.remove_contact(
-            self._contact(request, pk, "site.contact.manage"), actor=request.user, request=request
-        )
+        services.remove_contact(self._contact(request, pk, "site.contact.manage"), actor=request.user,
+                                request=request)
         return Response(status=status.HTTP_204_NO_CONTENT)

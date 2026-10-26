@@ -5,26 +5,25 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
+
     dependencies = [
-        ("audit", "0002_audit_immutable_trigger"),
-        ("tenancy", "0001_initial"),
+        ('audit', '0002_audit_immutable_trigger'),
+        ('tenancy', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name="auditlog",
-            name="site_id",
+            model_name='auditlog',
+            name='site_id',
             field=models.UUIDField(blank=True, null=True),
         ),
         migrations.AddIndex(
-            model_name="auditlog",
-            index=models.Index(
-                fields=["organization", "site_id", "-occurred_at"], name="audit_audit_organiz_96cfa6_idx"
-            ),
+            model_name='auditlog',
+            index=models.Index(fields=['organization', 'site_id', '-occurred_at'], name='audit_audit_organiz_96cfa6_idx'),
         ),
         migrations.AddIndex(
-            model_name="auditlog",
-            index=models.Index(fields=["organization", "actor_email"], name="audit_audit_organiz_195214_idx"),
+            model_name='auditlog',
+            index=models.Index(fields=['organization', 'actor_email'], name='audit_audit_organiz_195214_idx'),
         ),
     ]

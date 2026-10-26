@@ -15,27 +15,18 @@ def _orgs_of(user):
 def on_login(sender, request, user, **kwargs):
     # One row per organization the user belongs to, so each org's audit trail shows its members' sign-ins.
     for org in _orgs_of(user):
-        audit.record(
-            "auth.login", actor=user, organization=org, target=user, target_repr=user.email, request=request
-        )
+        audit.record("auth.login", actor=user, organization=org, target=user, target_repr=user.email,
+                     request=request)
 
 
 @receiver(user_logged_out)
 def on_logout(sender, request, user, **kwargs):
     if user is not None:
         for org in _orgs_of(user):
-            audit.record(
-                "auth.logout",
-                actor=user,
-                organization=org,
-                target=user,
-                target_repr=user.email,
-                request=request,
-            )
+            audit.record("auth.logout", actor=user, organization=org, target=user, target_repr=user.email,
+                         request=request)
 
 
 @receiver(user_locked_out)
 def on_lockout(sender, request, username, ip_address, **kwargs):
-    audit.record(
-        "auth.lockout", metadata={"username": str(username)[:254], "ip": ip_address}, request=request
-    )
+    audit.record("auth.lockout", metadata={"username": str(username)[:254], "ip": ip_address}, request=request)

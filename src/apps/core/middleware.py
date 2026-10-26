@@ -28,11 +28,7 @@ class RequestIdMiddleware:
             flogging.request_id_var.reset(token)
         response["X-Request-ID"] = rid
         logging.getLogger("fieldops.access").info(
-            "%s %s -> %s (%d ms)",
-            request.method,
-            request.path,
-            response.status_code,
-            elapsed,
+            "%s %s -> %s (%d ms)", request.method, request.path, response.status_code, elapsed,
             extra={"request_id": rid},
         )
         return response

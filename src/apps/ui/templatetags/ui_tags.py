@@ -52,95 +52,38 @@ def icon(name, size=18):
     return format_html(
         '<svg class="fx-icon" width="{0}" height="{0}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
         'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{1}</svg>',
-        size,
-        mark_safe(path),  # nosec
+        size, mark_safe(path),
     )
 
 
 _BADGES = {
-    "ACTIVE": "success",
-    "INVITED": "info",
-    "SUSPENDED": "danger",
-    "INACTIVE": "secondary",
-    "UNDER_MAINTENANCE": "warning",
-    "OUT_OF_SERVICE": "danger",
-    "RETIRED": "secondary",
-    "DISPOSED": "secondary",
-    "INFO": "info",
-    "SUCCESS": "success",
-    "WARNING": "warning",
-    "CRITICAL": "danger",
+    "ACTIVE": "success", "INVITED": "info", "SUSPENDED": "danger",
+    "INACTIVE": "secondary", "UNDER_MAINTENANCE": "warning", "OUT_OF_SERVICE": "danger",
+    "RETIRED": "secondary", "DISPOSED": "secondary", "INFO": "info", "SUCCESS": "success", "WARNING": "warning", "CRITICAL": "danger",
     # M05 requests / M06 work orders
-    "NEW": "info",
-    "TRIAGED": "info",
-    "APPROVED": "success",
-    "REJECTED": "danger",
-    "WORK_ORDER_CREATED": "info",
-    "IN_SERVICE": "warning",
-    "RESOLVED": "success",
-    "CONFIRMED": "success",
-    "CLOSED": "secondary",
-    "DRAFT": "secondary",
-    "PLANNED": "info",
-    "ASSIGNED": "info",
-    "DISPATCHED": "info",
-    "IN_PROGRESS": "warning",
-    "ON_HOLD": "danger",
-    "COMPLETED": "success",
-    "SUPERVISOR_REVIEW": "warning",
-    "CANCELLED": "secondary",
-    "OPEN": "warning",
-    "NOT_STARTED": "secondary",
-    "LOW": "secondary",
-    "MEDIUM": "info",
-    "HIGH": "warning",
-    "URGENT": "danger",
+    "NEW": "info", "TRIAGED": "info", "APPROVED": "success", "REJECTED": "danger", "WORK_ORDER_CREATED": "info",
+    "IN_SERVICE": "warning", "RESOLVED": "success", "CONFIRMED": "success", "CLOSED": "secondary",
+    "DRAFT": "secondary", "PLANNED": "info", "ASSIGNED": "info", "DISPATCHED": "info", "IN_PROGRESS": "warning",
+    "ON_HOLD": "danger", "COMPLETED": "success", "SUPERVISOR_REVIEW": "warning", "CANCELLED": "secondary",
+    "OPEN": "warning", "NOT_STARTED": "secondary",
+    "LOW": "secondary", "MEDIUM": "info", "HIGH": "warning", "URGENT": "danger",
     # M09 part lines / reservations / movements
-    "REQUESTED": "info",
-    "RESERVED": "info",
-    "ISSUED": "warning",
-    "CONSUMED": "success",
-    "RETURNED": "secondary",
-    "RECONCILED": "secondary",
-    "RELEASED": "secondary",
-    "FULFILLED": "success",
-    "RECEIPT": "success",
-    "ISSUE": "warning",
-    "RETURN": "info",
-    "TRANSFER_OUT": "info",
-    "TRANSFER_IN": "info",
-    "ADJUSTMENT": "secondary",
-    "RESERVE": "info",
-    "RELEASE": "secondary",
+    "REQUESTED": "info", "RESERVED": "info", "ISSUED": "warning", "CONSUMED": "success", "RETURNED": "secondary",
+    "RECONCILED": "secondary", "RELEASED": "secondary", "FULFILLED": "success", "RECEIPT": "success",
+    "ISSUE": "warning", "RETURN": "info", "TRANSFER_OUT": "info", "TRANSFER_IN": "info", "ADJUSTMENT": "secondary",
+    "RESERVE": "info", "RELEASE": "secondary",
     # M04 schedules / cycles
-    "BREACHED": "danger",
-    "MET": "success",
-    "MET_LATE": "warning",
-    "PENDING": "info",
-    "PAUSED": "warning",
-    "ACKNOWLEDGED": "info",
-    "NOT_APPLICABLE": "secondary",
-    "MAJOR": "warning",
-    "MINOR": "info",
-    "UPCOMING": "info",
-    "EXPIRED": "danger",
-    "COVERING": "success",
-    "EXCLUDED": "warning",
-    "RENEWED": "success",
-    "DUE": "warning",
-    "SCHEDULED": "info",
-    "DISABLED": "secondary",
-    "GENERATED": "info",
-    "VERIFIED": "success",
+    "BREACHED": "danger", "MET": "success", "MET_LATE": "warning", "PENDING": "info", "PAUSED": "warning",
+    "ACKNOWLEDGED": "info", "NOT_APPLICABLE": "secondary", "MAJOR": "warning", "MINOR": "info",
+    "UPCOMING": "info", "EXPIRED": "danger", "COVERING": "success", "EXCLUDED": "warning", "RENEWED": "success",
+    "DUE": "warning", "SCHEDULED": "info", "DISABLED": "secondary", "GENERATED": "info", "VERIFIED": "success",
 }
 
 
 @register.simple_tag
 def status_badge(value):
     tone = _BADGES.get(str(value).upper(), "secondary")
-    return format_html(
-        '<span class="badge fx-badge fx-badge-{}">{}</span>', tone, str(value).replace("_", " ").title()
-    )
+    return format_html('<span class="badge fx-badge fx-badge-{}">{}</span>', tone, str(value).replace("_", " ").title())
 
 
 @register.filter
@@ -152,7 +95,14 @@ def pretty_json(value):
 
 @register.filter
 def get_item(mapping, key):
-    return mapping.get(key, "") if hasattr(mapping, "get") else ""
+    if mapping is None:
+        return ""
+    if hasattr(mapping, "get"):
+        return mapping.get(key, "")
+    try:
+        return mapping[key]
+    except (KeyError, TypeError, IndexError):
+        return ""
 
 
 @register.simple_tag(takes_context=True)
@@ -171,7 +121,6 @@ def hierarchy_trail(asset):
     if not asset:
         return ""
     from apps.assets import hierarchy
-
     try:
         ancs = list(reversed(hierarchy.ancestors(asset)))
     except Exception:
@@ -180,12 +129,8 @@ def hierarchy_trail(asset):
         return ""
     items = []
     for a in ancs:
-        items.append(
-            f'<a href="/app/assets/{a.pk}/?tab=hierarchy" class="text-decoration-none">{a.asset_tag}</a>'
-        )
+        items.append(f'<a href="/app/assets/{a.pk}/?tab=hierarchy" class="text-decoration-none">{a.asset_tag}</a>')
     items.append(f'<span class="fw-semibold text-dark">{asset.asset_tag}</span>')
     trail_html = ' <span class="text-muted mx-1">›</span> '.join(items)
-    return format_html(
-        '<span class="fx-hierarchy-trail small text-body-secondary">Machine Path: {}</span>',
-        mark_safe(trail_html),  # nosec
-    )
+    return format_html('<span class="fx-hierarchy-trail small text-body-secondary">Machine Path: {}</span>', mark_safe(trail_html))
+

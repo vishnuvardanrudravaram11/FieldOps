@@ -1,7 +1,6 @@
 """Permission catalog registry. Each app declares its permissions in ``<app>/permissions.py`` by calling
 ``register()``; ``rbac.apps`` autodiscovers those modules. Codes are ``<resource>.<action>`` (further
 dots allowed, e.g. ``asset.history.view``). The DB table is a synced mirror (post_migrate)."""
-
 from dataclasses import dataclass
 
 
@@ -17,9 +16,7 @@ class PermissionDef:
 _REGISTRY: dict[str, PermissionDef] = {}
 
 
-def register(
-    module: str, code: str, description: str, *, site_scoped: bool = False, implies: tuple = ()
-) -> None:
+def register(module: str, code: str, description: str, *, site_scoped: bool = False, implies: tuple = ()) -> None:
     existing = _REGISTRY.get(code)
     if existing and existing.module != module:
         raise ValueError(f"Permission {code} already registered by module {existing.module}.")

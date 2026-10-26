@@ -63,18 +63,16 @@ class MembershipRole(BaseModel):
         "tenancy.Membership", on_delete=models.CASCADE, related_name="membership_roles"
     )
     role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="membership_roles")
-    site = models.ForeignKey("sites.Site", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    site = models.ForeignKey(
+        "sites.Site", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["membership", "role"],
-                condition=models.Q(site__isnull=True),
-                name="uniq_membership_role_orgwide",
-            ),
+                fields=["membership", "role"], condition=models.Q(site__isnull=True),
+                name="uniq_membership_role_orgwide"),
             models.UniqueConstraint(
-                fields=["membership", "role", "site"],
-                condition=models.Q(site__isnull=False),
-                name="uniq_membership_role_site",
-            ),
+                fields=["membership", "role", "site"], condition=models.Q(site__isnull=False),
+                name="uniq_membership_role_site"),
         ]
