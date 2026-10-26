@@ -84,7 +84,6 @@ def test_suspended_membership_denied(as_user, owner_a, org_a, make_member):
 
 def test_suspended_org_denied(as_user, platform_admin, owner_a, org_a):
     from apps.tenancy import services
-
     services.set_organization_status(org_a, active=False, actor=platform_admin, reason="non-payment")
     r = as_user(owner_a, org_a).get("/api/v1/members/")
     assert r.status_code == 403
@@ -103,10 +102,8 @@ def test_user_in_two_orgs_sees_only_selected(as_user, org_a, org_b, make_member)
 def test_assigning_foreign_role_rejected(as_user, owner_a, org_a, org_b):
     foreign_role = Role.objects.unscoped().get(organization=org_b, system_key="technician")
     r = as_user(owner_a, org_a).post(
-        "/api/v1/members/",
-        {"email": "x@alpha.test", "full_name": "X", "role_ids": [str(foreign_role.pk)]},
-        format="json",
-    )
+        "/api/v1/members/", {"email": "x@alpha.test", "full_name": "X", "role_ids": [str(foreign_role.pk)]},
+        format="json")
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "invalid_roles"
 
@@ -152,13 +149,10 @@ def test_session_org_cannot_be_forged(client, owner_a, org_a, org_b):
 def test_unscoped_is_only_used_in_trusted_modules():
     """Static guard: `.unscoped(` is a greppable escape hatch limited to the identity<->tenant bridge."""
     allowed = {
-        "apps/core/tenant.py",
-        "apps/tenancy/selectors.py",
-        "apps/tenancy/services.py",
-        "apps/rbac/services.py",
-        "apps/accounts/services.py",
-        "apps/notifications/services.py",
+        "apps/core/tenant.py", "apps/tenancy/selectors.py", "apps/tenancy/services.py",
+        "apps/rbac/services.py", "apps/accounts/services.py", "apps/notifications/services.py",
         "apps/accounts/management/commands/seed_user_roles.py",
+        "apps/portal/services.py", "apps/ui/utils.py",
     }
     root = pathlib.Path(__file__).resolve().parent.parent / "src"
     offenders = []

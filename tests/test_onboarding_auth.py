@@ -15,9 +15,8 @@ User = get_user_model()
 def test_full_onboarding_invite_activate_login(platform_admin, client, django_capture_on_commit_callbacks):
     """Super Admin creates org -> owner gets email -> sets own password -> signs in -> lands in their org."""
     with django_capture_on_commit_callbacks(execute=True):
-        org, m = services.create_organization(
-            name="Gamma Co", owner_email="boss@gamma.test", owner_name="Gina Gamma", actor=platform_admin
-        )
+        org, m = services.create_organization(name="Gamma Co", owner_email="boss@gamma.test",
+                                              owner_name="Gina Gamma", actor=platform_admin)
     assert m.status == Membership.Status.INVITED
     assert not m.user.has_usable_password()
     assert len(mail.outbox) == 1
@@ -27,12 +26,7 @@ def test_full_onboarding_invite_activate_login(platform_admin, client, django_ca
     path = "/" + link.split("/", 3)[3]
 
     # unactivated user cannot sign in
-    assert (
-        client.post(
-            "/accounts/login/", {"username": "boss@gamma.test", "password": "anything-12345"}
-        ).status_code
-        == 200
-    )
+    assert client.post("/accounts/login/", {"username": "boss@gamma.test", "password": "anything-12345"}).status_code == 200
 
     r = client.get(path, follow=True)  # Django redirects token -> set-password form
     assert r.status_code == 200
@@ -43,22 +37,16 @@ def test_full_onboarding_invite_activate_login(platform_admin, client, django_ca
     assert ok.status_code == 302
     assert Membership.objects.unscoped().get(pk=m.pk).status == Membership.Status.ACTIVE
 
-    assert (
-        client.post("/accounts/login/", {"username": "boss@gamma.test", "password": PASSWORD}).status_code
-        == 302
-    )
+    assert client.post("/accounts/login/", {"username": "boss@gamma.test", "password": PASSWORD}).status_code == 302
     home = client.get("/app/")
     assert home.status_code == 200 and "Gamma Co" in home.content.decode()
 
 
 def test_activation_link_is_single_use(platform_admin, client, django_capture_on_commit_callbacks):
     with django_capture_on_commit_callbacks(execute=True):
-        org, m = services.create_organization(
-            name="Delta Co", owner_email="o@delta.test", owner_name="D", actor=platform_admin
-        )
-    path = (
-        "/" + re.search(r"https?://\S+/accounts/activate/\S+", mail.outbox[0].body).group(0).split("/", 3)[3]
-    )
+        org, m = services.create_organization(name="Delta Co", owner_email="o@delta.test", owner_name="D",
+                                              actor=platform_admin)
+    path = "/" + re.search(r"https?://\S+/accounts/activate/\S+", mail.outbox[0].body).group(0).split("/", 3)[3]
     set_url = client.get(path, follow=True).redirect_chain[-1][0]
     client.post(set_url, {"new_password1": PASSWORD, "new_password2": PASSWORD})
     again = client.get(path, follow=True)
@@ -67,49 +55,30 @@ def test_activation_link_is_single_use(platform_admin, client, django_capture_on
 
 def test_only_platform_admin_can_create_org(owner_a):
     from apps.core.exceptions import PermissionDenied
-
     with pytest.raises(PermissionDenied):
         services.create_organization(name="Evil Corp", owner_email="e@e.test", owner_name="E", actor=owner_a)
 
 
 def test_duplicate_org_rejected(platform_admin, org_a):
     from apps.core.exceptions import Conflict
-
     with pytest.raises(Conflict):
-        services.create_organization(
-            name="alpha industries", owner_email="z@z.test", owner_name="Z", actor=platform_admin
-        )
+        services.create_organization(name="alpha industries", owner_email="z@z.test", owner_name="Z",
+                                     actor=platform_admin)
 
 
-def test_existing_user_invited_to_second_org_is_active_and_notified(
-    org_a, org_b, make_member, as_user, owner_b
-):
+def test_existing_user_invited_to_second_org_is_active_and_notified(org_a, org_b, make_member, as_user, owner_b):
     make_member(org_a, "shared@x.test", "technician")
-    r = as_user(owner_b, org_b).post(
-        "/api/v1/members/",
-        {
-            "email": "shared@x.test",
-            "role_ids": [
-                str(
-                    __import__("apps.rbac.models", fromlist=["Role"])
-                    .Role.objects.unscoped()
-                    .get(organization=org_b, system_key="admin")
-                    .pk
-                )
-            ],
-        },
-        format="json",
-    )
+    r = as_user(owner_b, org_b).post("/api/v1/members/", {
+        "email": "shared@x.test", "role_ids": [str(__import__("apps.rbac.models", fromlist=["Role"]).Role.objects
+                                                   .unscoped().get(organization=org_b, system_key="admin").pk)]},
+        format="json")
     assert r.status_code == 201 and r.json()["status"] == "ACTIVE"
 
 
 def test_duplicate_member_rejected(owner_a, org_a, as_user, tech_a):
     from apps.rbac.models import Role
-
     rid = str(Role.objects.unscoped().get(organization=org_a, system_key="technician").pk)
-    r = as_user(owner_a, org_a).post(
-        "/api/v1/members/", {"email": tech_a.email, "role_ids": [rid]}, format="json"
-    )
+    r = as_user(owner_a, org_a).post("/api/v1/members/", {"email": tech_a.email, "role_ids": [rid]}, format="json")
     assert r.status_code == 409 and r.json()["error"]["code"] == "already_member"
 
 
@@ -125,7 +94,6 @@ def test_suspend_and_reactivate_org_blocks_ui(platform_admin, owner_a, org_a, cl
 
 def test_suspend_requires_reason(platform_admin, org_a):
     from apps.core.exceptions import ValidationFailed
-
     with pytest.raises(ValidationFailed):
         services.set_organization_status(org_a, active=False, actor=platform_admin, reason=" ")
 
@@ -149,7 +117,5 @@ def test_jwt_flow_and_me(api, owner_a, org_a):
 
 
 def test_jwt_bad_password_rejected(api, owner_a):
-    r = api.post(
-        "/api/v1/auth/token/", {"email": owner_a.email, "password": "nope-nope-nope-1"}, format="json"
-    )
+    r = api.post("/api/v1/auth/token/", {"email": owner_a.email, "password": "nope-nope-nope-1"}, format="json")
     assert r.status_code == 401

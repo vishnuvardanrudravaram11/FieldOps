@@ -1,5 +1,4 @@
 """M01 pages render for every role and tab (guards against permission codes that belong to modules not installed)."""
-
 import pytest
 
 pytestmark = pytest.mark.django_db
