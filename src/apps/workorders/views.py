@@ -2,12 +2,13 @@ from uuid import UUID
 
 from django.db.models import Q
 from django.utils import timezone
-from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
-from rest_framework import status, viewsets
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema, inline_serializer
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.api import StandardPagination
+from apps.core.exceptions import ValidationFailed
 from apps.rbac import services as rbac
 from apps.sites.models import Site
 from apps.tenancy.api import TenantAPIMixin
@@ -18,14 +19,14 @@ from .serializers import (
     AssignSerializer,
     ChecklistReferenceSerializer,
     ClosureCommentSerializer,
-    CompleteSerializer,
     CreateWorkOrderSerializer,
+    WorkOrderCompleteSerializer,
     EvidenceSerializer,
     ExpectedVersionSerializer,
     LaborInputSerializer,
     MaterialInputSerializer,
-    MaterialSerializer,
     PlanSerializer,
+    ReassignSerializer,
     ProvisionalChecklistSerializer,
     ReviewSerializer,
     UpdateWorkOrderSerializer,
@@ -40,8 +41,12 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
     queryset = WorkOrder.objects.none()
     pagination_class = StandardPagination
     permission_map = {
+        "list": "work_order.view_assigned",
+        "retrieve": "work_order.view_assigned",
+        "events": "work_order.view_assigned",
+        "checklist_status": "work_order.view_assigned",
         "create": "work_order.create", "partial_update": "work_order.update",
-        "plan": "work_order.plan", "assign": "work_order.assign",
+        "plan": "work_order.plan", "assign": "work_order.assign", "reassign": "work_order.assign", "reassign": "work_order.assign",
         "dispatch_order": "work_order.dispatch", "start": "work_order.start", "hold": "work_order.hold",
         "resume": "work_order.start", "complete": "work_order.complete",
         "validate_checklist": "work_order.complete",
@@ -49,31 +54,22 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
         "close": "work_order.close", "return_for_rework": "work_order.review",
         "provisional_checklist": "work_order.update", "checklist_reference": "work_order.update", "labor": "work_order.record",
         "materials": "work_order.record", "evidence": "work_order.attach", "notes": "work_order.record",
-        "transition": "work_order.update", "closure": "work_order.view",
+        "transition": "work_order.view_assigned",
+        "closure": "work_order.view_assigned",
     }
 
     def get_required_permission(self):
-        if getattr(self, "action", None) == "transition":
-            act = self.request.data.get("action") if hasattr(self, "request") else None
-            trans_map = {
-                "complete": "work_order.complete",
-                "start": "work_order.start",
-                "resume": "work_order.start",
-                "hold": "work_order.hold",
-                "close": "work_order.close",
-                "submit_for_review": "work_order.complete",
-                "submit-for-review": "work_order.complete",
-                "review": "work_order.review",
-                "return_for_rework": "work_order.review",
-                "return-for-rework": "work_order.review",
-                "assign": "work_order.assign",
-                "dispatch": "work_order.dispatch",
-                "plan": "work_order.plan",
-            }
-            return trans_map.get(act, "work_order.update")
-        if getattr(self, "action", None) in ("list", "retrieve", "events", "checklist_status", "validate_checklist", "closure") or (
-            getattr(self, "action", None) == "materials" and hasattr(self, "request") and self.request.method.lower() == "get"
-        ):
+        action = getattr(self, "action", None)
+        if action == "list":
+            return "work_order.view_assigned"
+        if action == "transition":
+            sub = getattr(self.request, "data", {}).get("action")
+            return {"complete": "work_order.complete", "start": "work_order.start",
+                    "hold": "work_order.hold", "resume": "work_order.start",
+                    "plan": "work_order.plan", "assign": "work_order.assign",
+                    "dispatch": "work_order.dispatch", "submit_for_review": "work_order.complete",
+                    "close": "work_order.close", "return_for_rework": "work_order.review"}.get(sub, "work_order.view_assigned")
+        if (action in ("retrieve", "events", "checklist_status", "validate_checklist", "closure") or (action == "materials" and self.request.method == "GET")):
             m = getattr(self.request, "membership", None)
             if m and rbac.has_permission_anywhere(m, "work_order.view"):
                 return "work_order.view"
@@ -103,14 +99,22 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
             return PlanSerializer
         if self.action == "assign":
             return AssignSerializer
+        if self.action == "reassign":
+            return ReassignSerializer
         if self.action == "hold":
             return WorkOrderReasonSerializer
         if self.action in ("close", "return_for_rework"):
             return ClosureCommentSerializer
         if self.action == "notes":
             return WorkNoteSerializer
+        if self.action in ("start", "dispatch_order", "resume", "submit_for_review"):
+            return ExpectedVersionSerializer
+        if self.action == "checklist_reference":
+            return ChecklistReferenceSerializer
+        if self.action == "validate_checklist":
+            return None
         if self.action == "complete":
-            return CompleteSerializer
+            return WorkOrderCompleteSerializer
         if self.action == "review":
             return ReviewSerializer
         if self.action == "labor":
@@ -129,7 +133,7 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
         OpenApiParameter("site", OpenApiTypes.UUID),
         OpenApiParameter("assignee", OpenApiTypes.UUID, description="Technician membership id"),
         OpenApiParameter("work_type", OpenApiTypes.STR, enum=[key for key, _ in WorkOrder.WorkType.choices]),
-        OpenApiParameter("source", OpenApiTypes.STR, enum=[key for key, _ in WorkOrder.SourceType.choices]),
+        OpenApiParameter("source", OpenApiTypes.STR, enum=[key for key, _ in WorkOrder.SourceType.distinct_choices()]),
         OpenApiParameter("overdue", OpenApiTypes.BOOL),
         OpenApiParameter("q", OpenApiTypes.STR, description="Search number, title, asset, or source reference"),
         OpenApiParameter("ordering", OpenApiTypes.STR, description="Allowed ordering: created_at, due_at, priority, planned_start, order_number; prefix with - for descending"),
@@ -137,10 +141,14 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
     def list(self, request):
         qs = self.get_queryset()
         state = request.query_params.get("status")
-        if state in dict(WorkOrder.Status.choices):
+        if state:
+            if state not in dict(WorkOrder.Status.choices):
+                raise ValidationFailed(f"Invalid status '{state}'.", code="invalid_filter")
             qs = qs.filter(status=state)
         priority = request.query_params.get("priority")
-        if priority in dict(WorkOrder.Priority.choices):
+        if priority:
+            if priority not in dict(WorkOrder.Priority.choices):
+                raise ValidationFailed(f"Invalid priority '{priority}'.", code="invalid_filter")
             qs = qs.filter(priority=priority)
         work_type = request.query_params.get("work_type")
         if work_type in dict(WorkOrder.WorkType.choices):
@@ -175,6 +183,7 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
         page = self.paginate_queryset(qs.distinct())
         return self.get_paginated_response(WorkOrderSerializer(page, many=True).data)
 
+    @extend_schema(request=UpdateWorkOrderSerializer, responses={200: WorkOrderSerializer})
     def partial_update(self, request, pk=None):
         wo = self.get_object()
         serializer = self.get_serializer(wo, data=request.data, partial=True)
@@ -183,10 +192,12 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
                                              request=request, **serializer.validated_data)
         return Response(WorkOrderSerializer(updated).data)
 
+    @extend_schema(responses={200: WorkOrderSerializer})
     def retrieve(self, request, pk=None):
         wo = self.get_object()
         return Response(WorkOrderSerializer(wo).data)
 
+    @extend_schema(request=CreateWorkOrderSerializer, responses={201: WorkOrderSerializer})
     def create(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -220,81 +231,86 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
             return Response(WorkOrderSerializer(result).data)
         return Response({"id": str(result.pk), "work_order": str(wo.pk)}, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=PlanSerializer, responses={200: WorkOrderSerializer})
     @action(detail=True, methods=["post"])
     def plan(self, request, pk=None):
         return self._action(pk, services.plan_work_order, PlanSerializer)
 
+    @extend_schema(request=AssignSerializer, responses={200: WorkOrderSerializer})
     @action(detail=True, methods=["post"])
     def assign(self, request, pk=None):
         return self._action(pk, lambda wo, **kw: services.assign_work_order(
             wo, assignee_id=kw.pop("assigned_to"), **kw), AssignSerializer)
 
+    @extend_schema(request=ReassignSerializer, responses={200: WorkOrderSerializer})
+    @action(detail=True, methods=["post"])
+    def reassign(self, request, pk=None):
+        return self._action(
+            pk,
+            lambda wo, **kw: services.reassign_work_order(
+                wo,
+                assignee_id=kw.pop("assigned_to", None) or kw.pop("technician", None),
+                **kw,
+            ),
+            ReassignSerializer,
+        )
+
+    @extend_schema(request=ExpectedVersionSerializer, responses={200: WorkOrderSerializer})
     @action(detail=True, methods=["post"], url_path="dispatch")
     def dispatch_order(self, request, pk=None):
         return self._action(pk, services.dispatch_work_order)
 
+    @extend_schema(request=ExpectedVersionSerializer, responses={200: WorkOrderSerializer})
     @action(detail=True, methods=["post"])
     def start(self, request, pk=None):
         return self._action(pk, services.start_work_order)
 
+    @extend_schema(request=WorkOrderReasonSerializer, responses={200: WorkOrderSerializer})
     @action(detail=True, methods=["post"])
     def hold(self, request, pk=None):
         return self._action(pk, services.hold_work_order, WorkOrderReasonSerializer)
 
+    @extend_schema(request=ExpectedVersionSerializer, responses={200: WorkOrderSerializer})
     @action(detail=True, methods=["post"])
     def resume(self, request, pk=None):
         return self._action(pk, services.resume_work_order)
 
-    @extend_schema(description="IN_PROGRESS -> COMPLETED. Saves resolution notes after M08 checklist validation and work-type evidence requirements pass.")
-    @action(detail=True, methods=["post"])
-    def complete(self, request, pk=None):
-        return self._action(pk, services.complete_work_order, CompleteSerializer)
-
     @action(detail=True, methods=["post"])
     def transition(self, request, pk=None):
-        action_name = request.data.get("action")
+        act = request.data.get("action")
         clean_data = {k: v for k, v in request.data.items() if k != "action"}
-        if action_name == "complete":
-            s = CompleteSerializer(data=clean_data)
-            s.is_valid(raise_exception=True)
-            wo = self.get_object()
-            order = services.complete_work_order(
-                wo,
-                membership=request.membership,
-                actor=request.user,
-                resolution_notes=s.validated_data["resolution_notes"],
-                expected_version=s.validated_data.get("expected_version"),
-                request=request,
-            )
-            return Response(WorkOrderSerializer(order).data)
-        elif action_name == "start":
-            return self.start(request, pk)
-        elif action_name == "hold":
-            return self.hold(request, pk)
-        elif action_name == "resume":
-            return self.resume(request, pk)
-        elif action_name == "close":
-            return self.close(request, pk)
-        elif action_name in ("submit_for_review", "submit-for-review"):
-            return self.submit_for_review(request, pk)
-        elif action_name == "review":
-            return self.review(request, pk)
-        elif action_name in ("return_for_rework", "return-for-rework"):
-            return self.return_for_rework(request, pk)
-        elif action_name == "assign":
-            return self.assign(request, pk)
-        elif action_name == "dispatch":
-            return self.dispatch_order(request, pk)
-        elif action_name == "plan":
-            return self.plan(request, pk)
-        from apps.core.exceptions import ValidationFailed
-        raise ValidationFailed(f"Unknown transition action: {action_name}")
+        request._full_data = clean_data
+        handler_map = {
+            "complete": self.complete,
+            "start": self.start,
+            "hold": self.hold,
+            "resume": self.resume,
+            "plan": self.plan,
+            "assign": self.assign, "reassign": self.reassign,
+            "dispatch": self.dispatch_order,
+            "submit_for_review": self.submit_for_review,
+            "close": self.close,
+            "return_for_rework": self.return_for_rework,
+        }
+        handler = handler_map.get(act)
+        if not handler:
+            raise ValidationFailed(f"Unsupported transition action: {act}")
+        return handler(request, pk=pk)
 
-    @extend_schema(description="Assigned technician only: COMPLETED -> SUPERVISOR_REVIEW after checklist, notes, and evidence validation.")
+    @extend_schema(request=WorkOrderCompleteSerializer, responses={200: WorkOrderSerializer},
+                   description="IN_PROGRESS -> COMPLETED. Saves resolution notes after M08 checklist validation and work-type evidence requirements pass.")
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        return self._action(pk, services.complete_work_order, WorkOrderCompleteSerializer)
+
+    @extend_schema(request=ExpectedVersionSerializer, responses={200: WorkOrderSerializer},
+                   description="Assigned technician only: COMPLETED -> SUPERVISOR_REVIEW after checklist, notes, and evidence validation.")
     @action(detail=True, methods=["post"], url_path="submit-for-review")
     def submit_for_review(self, request, pk=None):
         return self._action(pk, services.submit_for_review)
 
+    @extend_schema(request=ReviewSerializer, responses={200: WorkOrderSerializer},
+                   description="Compatibility decision endpoint; approved=true closes, false returns SUPERVISOR_REVIEW to IN_PROGRESS.")
     @action(detail=True, methods=["post"])
     def review(self, request, pk=None):
         """Compatibility decision endpoint; approved=true closes, false returns SUPERVISOR_REVIEW to IN_PROGRESS.
@@ -305,32 +321,32 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
 
     @extend_schema(request=ClosureCommentSerializer,
         description="Approve a SUPERVISOR_REVIEW work order and close it. Safe to retry; repeated close returns the existing closed record.",
-        responses=WorkOrderSerializer)
+        responses={200: WorkOrderSerializer})
     @action(detail=True, methods=["post"])
     def close(self, request, pk=None):
         return self._action(pk, services.close_work_order, ClosureCommentSerializer)
 
     @extend_schema(request=ClosureCommentSerializer,
         description="Return a SUPERVISOR_REVIEW work order to IN_PROGRESS with a required rework comment.",
-        responses=WorkOrderSerializer)
+        responses={200: WorkOrderSerializer})
     @action(detail=True, methods=["post"], url_path="return-for-rework")
     def return_for_rework(self, request, pk=None):
         return self._action(pk, services.return_for_rework, ClosureCommentSerializer)
 
-    @extend_schema(request=WorkNoteSerializer, responses=WorkOrderSerializer,
+    @extend_schema(request=WorkNoteSerializer, responses={200: WorkOrderSerializer},
                    description="Append a technician progress note to the work-order event history.")
     @action(detail=True, methods=["post"])
     def notes(self, request, pk=None):
         return self._action(pk, lambda wo, **kw: services.record_work_update(
             wo, update=kw.pop("text"), **kw), WorkNoteSerializer)
 
-    @extend_schema(description="Store M06 provisional development notes only; never used as M08 checklist answers or completion evidence.")
+    @extend_schema(exclude=True)
     @action(detail=True, methods=["post"], url_path="provisional-checklist")
     def provisional_checklist(self, request, pk=None):
         return self._action(pk, lambda wo, **kw: services.set_checklist(wo, items=kw.pop("items"), **kw),
                             ProvisionalChecklistSerializer)
 
-    @extend_schema(responses=WorkOrderSerializer,
+    @extend_schema(request=ChecklistReferenceSerializer, responses={200: WorkOrderSerializer},
                    description="Register opaque M08 template and instance references. This leaves checklist status pending; it does not mark checklist completion.")
     @action(detail=True, methods=["post"], url_path="checklist-reference")
     def checklist_reference(self, request, pk=None):
@@ -343,37 +359,57 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
         from .checklist_adapter import get_checklist_summary
         return Response(get_checklist_summary(wo))
 
-    @extend_schema(responses={200: dict, 409: dict},
+    @extend_schema(request=None, responses={200: dict, 409: dict},
                    description="Evaluate the local adapter contract without contacting M08. Returns valid or pending metadata; it never creates checklist answers.")
     @action(detail=True, methods=["post"], url_path="validate-checklist")
     def validate_checklist(self, request, pk=None):
+        _ = request.data
         wo = self.get_object()
         from .checklist_adapter import get_checklist_status, get_checklist_summary
         result = get_checklist_status(wo)
-        return Response(get_checklist_summary(wo),
-            status=status.HTTP_200_OK if result.is_valid else status.HTTP_409_CONFLICT)
+        if not result.is_valid:
+            from apps.core.exceptions import Conflict
+            raise Conflict(result.message or "Checklist completion is required.", details=get_checklist_summary(wo))
+        return Response(get_checklist_summary(wo), status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request=LaborInputSerializer,
+        responses={201: inline_serializer("WorkOrderLaborRecordResponse", fields={"id": serializers.CharField(), "work_order": serializers.CharField()})},
+        description="Record technician labor hours."
+    )
     @action(detail=True, methods=["post"])
     def labor(self, request, pk=None):
         return self._action(pk, services.record_labor, LaborInputSerializer)
 
+    @extend_schema(
+        request=MaterialInputSerializer,
+        responses={201: inline_serializer("WorkOrderMaterialRecordResponse", fields={"id": serializers.CharField(), "work_order": serializers.CharField()})},
+        description="Record parts/materials used."
+    )
     @action(detail=True, methods=["get", "post"])
     def materials(self, request, pk=None):
-        if request.method.lower() == "get":
+        if request.method == "GET":
             wo = self.get_object()
-            materials = wo.material_entries.all().order_by("-created_at")
-            page = self.paginate_queryset(materials)
+            from .serializers import MaterialSerializer
+            qs = wo.material_entries.all().order_by("-created_at")
+            page = self.paginate_queryset(qs)
             if page is not None:
                 serializer = MaterialSerializer(page, many=True)
                 return self.get_paginated_response(serializer.data)
-            serializer = MaterialSerializer(materials, many=True)
+            serializer = MaterialSerializer(qs, many=True)
             return Response(serializer.data)
         return self._action(pk, services.record_material, MaterialInputSerializer)
 
+    @extend_schema(
+        request=EvidenceSerializer,
+        responses={201: inline_serializer("WorkOrderEvidenceRecordResponse", fields={"id": serializers.CharField(), "work_order": serializers.CharField()})},
+        description="Attach completion evidence."
+    )
     @action(detail=True, methods=["post"])
     def evidence(self, request, pk=None):
         return self._action(pk, services.add_evidence, EvidenceSerializer)
 
+    @extend_schema(responses={200: WorkOrderEventSerializer(many=True)})
     @action(detail=True, methods=["get"])
     def events(self, request, pk=None):
         wo = self.get_object()
@@ -382,4 +418,6 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
     @action(detail=True, methods=["get"])
     def closure(self, request, pk=None):
         wo = self.get_object()
-        return Response({"work_order": str(wo.pk), "blockers": services.closure_blockers(wo)})
+        blockers = services.closure_blockers(wo)
+        return Response({"blockers": blockers})
+

@@ -2,8 +2,6 @@ from django.urls import path
 
 from . import ui_views
 
-from apps.inventory import views as inventory_views
-
 app_name = "workorders"
 urlpatterns = [
     path("work-orders/", ui_views.WorkOrderListView.as_view(), name="list"),
@@ -16,8 +14,6 @@ urlpatterns = [
     path("work-orders/<uuid:pk>/tabs/<str:tab>/", ui_views.WorkOrderTabView.as_view(), name="tab"),
     path("work-orders/<uuid:pk>/checklist/execute/", ui_views.WorkOrderChecklistExecuteView.as_view(), name="checklist_execute"),
     path("work-orders/<uuid:pk>/edit/", ui_views.WorkOrderEditView.as_view(), name="edit"),
-    path("work-orders/<uuid:pk>/parts/", inventory_views.WorkOrderPartsView.as_view(), name="parts"),
-    path("work-orders/<uuid:pk>/parts/request/", inventory_views.PartRequestView.as_view(), name="part_request"),
     path("work-orders/<uuid:pk>/", ui_views.WorkOrderDetailView.as_view(), name="detail"),
     path("work-orders/<uuid:pk>/<str:operation>/", ui_views.WorkOrderActionView.as_view(), name="action"),
 ]
