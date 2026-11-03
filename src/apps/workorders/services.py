@@ -134,6 +134,9 @@ def transition_work_order(work_order, target_status, *, membership, actor, permi
         del wo._workflow_transition_write
     _record(wo, actor=actor, action=action, before=before, notes=reason,
             metadata=metadata, request=request)
+    _sla().on_work_order_changed(wo, (before or {}).get("status", ""), target_status, actor=actor)
+    if "priority" in (changes or {}) and (before or {}).get("priority") != wo.priority:
+        _sla().on_work_order_updated(wo, (before or {}).get("priority"), actor=actor, request=request)
     return wo
 
 
@@ -194,6 +197,11 @@ def _record(wo, *, actor, action, before=None, notes="", metadata=None, request=
     audit.record(f"work_order.{action}", actor=actor, organization=wo.organization, target=wo,
                  before=before, after=_snapshot(wo), metadata=metadata or {}, request=request)
     _notify_transition(wo, action, actor)
+
+
+def _sla():
+    from apps.sla import services as sla_services
+    return sla_services
 
 
 def _sync_incident_request(wo, action, actor, request=None):
@@ -414,6 +422,7 @@ def create_work_order(organization, *, site_id=None, title=None, actor, membersh
         msg = exc.message_dict if hasattr(exc, "message_dict") else exc.messages
         raise ValidationFailed(f"Work order is invalid: {msg}", details={"fields": msg}) from exc
     _record(wo, actor=actor, action="created", request=request)
+    _sla().on_work_order_created(wo)
     return wo
 
 
@@ -528,6 +537,8 @@ def update_work_order(wo, *, membership, actor, request=None, **values):
     except ValidationError as exc:
         raise ValidationFailed("Work order is invalid.", details={"fields": exc.message_dict if hasattr(exc, "message_dict") else exc.messages}) from exc
     _record(wo, actor=actor, action="updated", before=before, request=request)
+    if before.get("priority") != wo.priority:
+        _sla().on_work_order_updated(wo, before.get("priority"), actor=actor, request=request)
     return wo
 
 
