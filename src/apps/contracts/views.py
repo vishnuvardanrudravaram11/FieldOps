@@ -140,6 +140,7 @@ class AgreementExportView(CBase):
             )
             resp = HttpResponse(result.body, content_type=result.content_type)
             resp["Content-Disposition"] = f'attachment; filename="{result.filename}"'
+            resp["Access-Control-Expose-Headers"] = "Content-Disposition"
             resp["Cache-Control"] = "private, no-store"
             resp["X-Content-Type-Options"] = "nosniff"
             return resp
