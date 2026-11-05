@@ -30,7 +30,14 @@ def filter_templates(qs, params):
     q = (params.get("q") or "").strip()
     if q:
         qs = qs.filter(name__icontains=q)
-    return qs
+    ordering = (params.get("ordering") or "").strip()
+    ordering_map = {
+        "-created_at": "-created_at",
+        "created_at": "created_at",
+        "name": "name",
+        "-name": "-name",
+    }
+    return qs.order_by(ordering_map.get(ordering, "-created_at"), "-version")
 
 
 def items_for(org, template):
@@ -160,7 +167,7 @@ def pending_required_counts(org, work_orders) -> dict:
     wos = list(work_orders)
     required = list(ChecklistTemplate.objects.for_organization(org).filter(status=ACTIVE, is_required=True))
     pm_keys = dict(MaintenanceCycle.objects.for_organization(org).filter(
-        work_order__in=[w for w in wos if w.source_type == "PREVENTIVE_MAINTENANCE"]).exclude(
+        work_order__in=[w for w in wos if w.source_type in ("PREVENTIVE_MAINTENANCE", "PM")]).exclude(
         schedule__plan__checklist_key="").values_list("work_order_id", "schedule__plan__checklist_key"))
     if not wos or (not required and not pm_keys):
         return {wo.pk: 0 for wo in wos}

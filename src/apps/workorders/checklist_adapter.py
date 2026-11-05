@@ -89,6 +89,8 @@ def create_checklist_reference(work_order):
 
 
 def get_checklist_status(work_order):
+    if not work_order.checklist_required:
+        return ChecklistResult(False, NOT_REQUIRED, True, message="No checklist is required.")
     # 1. Direct provider result (for external providers and boundary mock tests)
     if (work_order.checklist_status == COMPLETED and work_order.checklist_instance_ref
             and work_order.checklist_validation_state == "VALID"):
@@ -132,29 +134,17 @@ def get_checklist_status(work_order):
                     return ChecklistResult(True, IN_PROGRESS, False, message="Checklist completion is required before completing this work order.")
             else:
                 blockers = m08_checklist_blockers(work_order)
-                if blockers:
-                    return ChecklistResult(True, PENDING, False, message="Checklist completion is required before completing this work order.")
-                if work_order.checklist_required:
-                    if (work_order.checklist_status == COMPLETED and work_order.checklist_validation_state == "VALID"):
-                        return ChecklistResult(True, COMPLETED, True, message="Checklist validated.")
-                    return ChecklistResult(True, work_order.checklist_status or PENDING, False, message="Checklist completion is required before completing this work order.")
-                return ChecklistResult(False, NOT_REQUIRED, True, message="No checklist is required.")
+                if not blockers:
+                    return ChecklistResult(False, NOT_REQUIRED, True, message="No checklist is required.")
+                return ChecklistResult(True, PENDING, False, message="Checklist completion is required before completing this work order.")
     except Exception:
         pass
 
-    if work_order.checklist_instance_ref:
-        if (work_order.checklist_status == COMPLETED
-                and work_order.checklist_validation_state == "VALID"):
-            return ChecklistResult(True, COMPLETED, True, message="Checklist validated.")
-        status = work_order.checklist_status if work_order.checklist_status in {
-            PENDING, IN_PROGRESS, FAILED, COMPLETED} else PENDING
-        return ChecklistResult(True, status, False,
-            message="Checklist completion is required before completing this work order.")
-
-    if not work_order.checklist_required:
-        return ChecklistResult(False, NOT_REQUIRED, True, message="No checklist is required.")
-
-    return ChecklistResult(True, work_order.checklist_status or PENDING, False, message="Checklist completion is required before completing this work order.")
+    # 3. Default fallback for M06 boundary (when no M08 templates or inspections exist)
+    status = work_order.checklist_status if work_order.checklist_status in {
+        PENDING, IN_PROGRESS, FAILED, COMPLETED} else PENDING
+    return ChecklistResult(True, status, False,
+        message="Checklist completion is required before completing this work order.")
 
 
 def validate_for_completion(work_order):

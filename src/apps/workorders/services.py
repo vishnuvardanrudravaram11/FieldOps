@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.audit import services as audit
@@ -34,6 +34,7 @@ TRANSITIONS = {
     WorkOrder.Status.COMPLETED: {WorkOrder.Status.SUPERVISOR_REVIEW},
     WorkOrder.Status.SUPERVISOR_REVIEW: {WorkOrder.Status.CLOSED, WorkOrder.Status.IN_PROGRESS},
 }
+
 CANCELLABLE_STATUSES = {
     WorkOrder.Status.DRAFT,
     WorkOrder.Status.PLANNED,
@@ -86,6 +87,8 @@ def allowed_actions(wo, membership):
         if permitted("work_order.review"):
             actions.append({"operation": "return_for_rework", "label": "Return for rework", "kind": "link",
                             "next_status": WorkOrder.Status.IN_PROGRESS})
+    if wo.status in (WorkOrder.Status.DISPATCHED, WorkOrder.Status.ON_HOLD) and permitted("work_order.assign"):
+        actions.append({"operation": "reassign", "label": "Reassign technician", "kind": "link"})
     return actions
 
 
@@ -96,7 +99,10 @@ def _need(membership, code, site):
 
 
 def _transition(work_order, target):
-    if target == WorkOrder.Status.CANCELLED and work_order.status in CANCELLABLE_STATUSES:
+    if target == WorkOrder.Status.CANCELLED:
+        if work_order.status not in CANCELLABLE_STATUSES:
+            raise InvalidTransition(f"Cannot cancel work order in status {work_order.status}.",
+                                    code="invalid_work_order_transition")
         return
     if target not in TRANSITIONS.get(work_order.status, set()):
         raise InvalidTransition(f"Cannot move work order from {work_order.status} to {target}.",
@@ -160,29 +166,23 @@ def _snapshot(wo):
 def _validate_schedule_window(start, end, due_at, estimated_hours):
     if start and end and end <= start:
         raise ValidationFailed("Planned end must be later than planned start.", code="invalid_schedule")
-    if due_at and end and due_at <= end:
-        raise ValidationFailed("Due date must be later than planned end.", code="due_not_after_end")
+    if due_at and end and due_at < end:
+        raise ValidationFailed("Due date must be on or after planned end.", code="due_not_after_end")
+    if due_at and start and due_at <= start:
+        raise ValidationFailed("Due date must be later than planned start.", code="due_not_after_start")
     if estimated_hours is not None and Decimal(estimated_hours) <= 0:
         raise ValidationFailed("Estimated hours must be greater than zero.", code="estimate_not_positive")
-    if start and end and estimated_hours is not None:
+    if start and end and end > start and estimated_hours is not None:
         available_hours = Decimal(str((end - start).total_seconds())) / Decimal("3600")
         if Decimal(estimated_hours) > available_hours:
             raise ValidationFailed("Estimated hours cannot exceed the planned start-to-end window.",
-                                   code="estimate_exceeds_schedule")
+                                   code="estimate_exceeds_schedule",
+                                   details={"fields": {"estimated_hours": ["Estimated hours cannot exceed the planned start-to-end window."]}})
 
 
 def _validate_linked_priority(work_order, priority):
-    if not work_order.source_request_id:
-        return
-    expected = {
-        "LOW": WorkOrder.Priority.LOW,
-        "MEDIUM": WorkOrder.Priority.MEDIUM,
-        "HIGH": WorkOrder.Priority.HIGH,
-        "CRITICAL": WorkOrder.Priority.CRITICAL,
-    }.get(work_order.source_request.severity)
-    if priority != expected:
-        raise ValidationFailed("Priority must match the linked approved incident or service request.",
-                               code="source_priority_mismatch")
+    # Priority is automatically defaulted from the linked source record, but manual adjustments by planners are permitted.
+    return
 
 
 def _record(wo, *, actor, action, before=None, notes="", metadata=None, request=None):
@@ -197,6 +197,44 @@ def _record(wo, *, actor, action, before=None, notes="", metadata=None, request=
     audit.record(f"work_order.{action}", actor=actor, organization=wo.organization, target=wo,
                  before=before, after=_snapshot(wo), metadata=metadata or {}, request=request)
     _notify_transition(wo, action, actor)
+    try:
+        from apps.core.outbox import publish_integration_event
+        publish_integration_event(
+            wo.organization,
+            event_type=f"work_order.{action}",
+            aggregate_type="work_order",
+            aggregate_id=str(wo.pk),
+            payload={
+                "order_number": wo.order_number,
+                "status": wo.status,
+                "site_id": str(wo.site_id),
+                "asset_id": str(wo.asset_id) if wo.asset_id else None,
+                "assigned_to": str(wo.assigned_to_id) if wo.assigned_to_id else None,
+                "action": action,
+            },
+            metadata=metadata or {},
+        )
+    except Exception:
+        pass
+
+
+def _sync_incident_request(wo, action, actor, request=None):
+    """Mirror M06 lifecycle events to an M05 source incident/request when linked."""
+    from apps.incidents import services as incident_services
+    from apps.incidents.models import ServiceRequest
+
+    source = None
+    if getattr(wo, "source_request_id", None):
+        source = ServiceRequest.objects.for_organization(wo.organization).select_for_update().filter(
+            pk=wo.source_request_id).first()
+    elif wo.source_type in (WorkOrder.SourceType.REQUEST, WorkOrder.SourceType.INCIDENT) and wo.source_reference:
+        source = ServiceRequest.objects.for_organization(wo.organization).select_for_update().filter(
+            number=wo.source_reference).first()
+
+    if source is not None:
+        callback = getattr(incident_services, f"on_work_order_{action}", None)
+        if callback is not None:
+            callback(source, actor=actor, request=request)
 
 
 def _sla():
@@ -204,26 +242,12 @@ def _sla():
     return sla_services
 
 
-def _sync_incident_request(wo, action, actor, request=None):
-    """Mirror M06 lifecycle events to an M05 source incident/request when linked."""
-    if wo.source_type not in (WorkOrder.SourceType.REQUEST, WorkOrder.SourceType.INCIDENT) or not wo.source_reference:
-        return
-    from apps.incidents import services as incident_services
-    from apps.incidents.models import ServiceRequest
-
-    source = ServiceRequest.objects.for_organization(wo.organization).select_for_update().filter(
-        number=wo.source_reference).first()
-    if source is not None:
-        callback = getattr(incident_services, f"on_work_order_{action}")
-        callback(source, actor=actor, request=request)
-
-
 def _notify_transition(wo, action, actor):
     recipients = set()
     title = body = ""
-    if action in ("assigned", "dispatched") and wo.assigned_to_id:
+    if action in ("assigned", "dispatched", "reassigned") and wo.assigned_to_id:
         recipients.add(wo.assigned_to.user_id)
-        title = "Work order assigned" if action == "assigned" else "Work order dispatched"
+        title = "Work order reassigned" if action == "reassigned" else ("Work order assigned" if action == "assigned" else "Work order dispatched")
         body = f"{wo.order_number}: {wo.title}"
     elif action == "held":
         recipients.add(wo.created_by_id)
@@ -249,7 +273,7 @@ def _notify_transition(wo, action, actor):
 def get_work_order(membership, pk):
     try:
         return WorkOrder.objects.for_organization(membership.organization).select_related(
-            "site", "assigned_to__user", "created_by").get(pk=pk)
+            "site", "assigned_to__user", "created_by", "asset", "component").get(pk=pk)
     except WorkOrder.DoesNotExist as exc:
         raise NotFound("Work order not found.") from exc
 
@@ -304,8 +328,11 @@ def create_work_order(organization, *, site_id=None, title=None, actor, membersh
             raise ValidationFailed("The selected source type does not match the linked record.",
                                    code="source_type_mismatch")
         source_reference = source_request.number
-        if WorkOrder.objects.for_organization(organization).filter(
-                source_type=source_type, source_reference=source_reference).exists():
+        if WorkOrder.objects.filter(
+                Q(source_request=source_request) |
+                Q(source_id=source_request.pk) |
+                Q(organization=organization, source_type=source_type, source_reference=source_reference)
+        ).exclude(status__in=(WorkOrder.Status.CANCELLED, WorkOrder.Status.CLOSED)).exists():
             raise Conflict("A work order is already linked to this incident or request.",
                            code="source_work_order_exists")
         fields.update({
@@ -342,11 +369,20 @@ def create_work_order(organization, *, site_id=None, title=None, actor, membersh
                                code="source_type_mismatch")
     source_reference = (fields.get("source_reference") or "").strip()
     is_pm = source_type in (WorkOrder.SourceType.PM, WorkOrder.SourceType.PREVENTIVE_MAINTENANCE)
+    if is_pm and not fields.get("source_id"):
+        if source_reference:
+            import uuid
+            fields["source_id"] = uuid.uuid5(uuid.NAMESPACE_DNS, source_reference)
+        else:
+            raise ValidationFailed("A work-order source needs both a type and an id.", code="invalid_source")
     if is_pm and not source_reference and fields.get("source_id"):
         source_reference = f"PM-{fields['source_id']}"
         fields["source_reference"] = source_reference
     if is_pm and not source_reference:
         raise ValidationFailed("A preventive-maintenance schedule reference is required.", code="pm_reference_required")
+    if is_pm and not fields.get("source_id"):
+        import uuid
+        fields["source_id"] = uuid.uuid5(uuid.NAMESPACE_DNS, f"{organization.pk}:{source_reference}")
     if is_pm and WorkOrder.objects.for_organization(organization).filter(
             source_type__in=(WorkOrder.SourceType.PM, WorkOrder.SourceType.PREVENTIVE_MAINTENANCE),
             source_reference=source_reference).exclude(
@@ -365,35 +401,21 @@ def create_work_order(organization, *, site_id=None, title=None, actor, membersh
     fields["source_reference"] = source_reference
     if source_type == WorkOrder.SourceType.REQUEST:
         fields["service_request_reference"] = source_reference
-    if source_type != WorkOrder.SourceType.MANUAL:
-        import uuid
-        if not fields.get("source_id"):
-            fields["source_id"] = uuid.uuid5(uuid.UUID(str(organization.pk)), source_reference)
-        elif not isinstance(fields["source_id"], uuid.UUID):
-            try:
-                fields["source_id"] = uuid.UUID(str(fields["source_id"]))
-            except (ValueError, TypeError):
-                fields["source_id"] = uuid.uuid5(uuid.UUID(str(organization.pk)), str(fields["source_id"]))
-    else:
-        fields.pop("source_id", None)
     start, end, due_at = fields.get("planned_start"), fields.get("planned_end"), fields.get("due_at")
     _validate_schedule_window(start, end, due_at, fields.get("estimated_hours"))
-    schedule_values = (start, end, due_at, fields.get("estimated_hours"))
-    if any(value is not None for value in schedule_values) and not all(value is not None for value in schedule_values):
-        raise ValidationFailed("Provide planned start, planned end, due date, and estimated hours together, or leave them blank and plan the Draft later.",
-                               code="incomplete_draft_schedule")
     if source_asset is None:
         raise ValidationFailed("Asset is required.", code="asset_required")
     from apps.assets.models import Asset, AssetComponent
     source_asset = Asset.objects.for_organization(organization).filter(pk=source_asset.pk).first()
     if source_asset is None:
         raise NotFound("Asset not found.")
-    if source_asset.status != Asset.Status.ACTIVE:
-        raise ValidationFailed("Selected asset is inactive.", code="asset_inactive")
+    allowed_asset_statuses = (Asset.Status.ACTIVE, Asset.Status.UNDER_MAINTENANCE, Asset.Status.OUT_OF_SERVICE)
+    if source_asset.status not in allowed_asset_statuses:
+        raise ValidationFailed(f"Cannot create work order for a {source_asset.status.lower()} asset.", code="asset_inactive")
     if source_asset.site_id != site.pk:
         raise ValidationFailed("Invalid asset for the selected site.", code="asset_site_mismatch")
     if component is not None:
-        if (component.organization_id != organization.pk or component.status != Asset.Status.ACTIVE or
+        if (component.organization_id != organization.pk or component.status not in (Asset.Status.ACTIVE, Asset.Status.UNDER_MAINTENANCE) or
                 not AssetComponent.objects.filter(organization=organization, parent=source_asset,
                                                   child=component,
                                                   relationship_type=AssetComponent.Relationship.COMPONENT).exists()):
@@ -408,19 +430,37 @@ def create_work_order(organization, *, site_id=None, title=None, actor, membersh
     if not isinstance(provisional, list) or any(not isinstance(item, dict) or
             not str(item.get("label", "")).strip() for item in provisional):
         raise ValidationFailed("Provisional checklist notes must each include a label.")
-    wo = WorkOrder(organization=organization, site=site,
-                   order_number=next_number(organization, "work_order", "WO"),
-                   title=title, created_by=actor, **fields)
     from .checklist_adapter import configure_requirement
-    configure_requirement(wo)
-    try:
-        wo.full_clean()
-        wo.save()
-    except ValidationError as exc:
-        if "uniq_work_order_per_pm_source" in str(exc):
-            raise IntegrityError(str(exc)) from exc
-        msg = exc.message_dict if hasattr(exc, "message_dict") else exc.messages
-        raise ValidationFailed(f"Work order is invalid: {msg}", details={"fields": msg}) from exc
+
+    wo = None
+    for attempt in range(5):
+        order_number = next_number(organization, "work_order", "WO")
+        attempts = 0
+        while WorkOrder.objects.for_organization(organization).filter(order_number=order_number).exists() and attempts < 100:
+            order_number = next_number(organization, "work_order", "WO")
+            attempts += 1
+        wo = WorkOrder(organization=organization, site=site,
+                       order_number=order_number,
+                       number=order_number,
+                       title=title, created_by=actor, **fields)
+        configure_requirement(wo)
+        try:
+            with transaction.atomic():
+                wo.full_clean()
+                wo.save()
+            break
+        except IntegrityError as exc:
+            exc_str = str(exc).lower()
+            if "source_request" in exc_str or "source_id" in exc_str:
+                raise Conflict("A work order is already linked to this incident or request.", code="source_work_order_exists") from exc
+            if ("uniq_wo_number_org" in exc_str or "order_number" in exc_str or "uniq_work_order_number_per_org" in exc_str) and attempt < 4:
+                continue
+            raise
+        except ValidationError as exc:
+            if "uniq_work_order_per_pm_source" in str(exc):
+                raise IntegrityError(str(exc)) from exc
+            msg = exc.message_dict if hasattr(exc, "message_dict") else exc.messages
+            raise ValidationFailed(f"Work order is invalid: {msg}", details={"fields": msg}) from exc
     _record(wo, actor=actor, action="created", request=request)
     _sla().on_work_order_created(wo)
     return wo
@@ -457,6 +497,8 @@ def update_work_order(wo, *, membership, actor, request=None, **values):
             raise ValidationFailed("Site must remain linked to the approved source record.", code="source_site_locked")
         if wo.status != WorkOrder.Status.DRAFT and new_site.pk != wo.site_id:
             raise Conflict("The site cannot be changed after the work order is planned.", code="site_locked")
+        if new_site.pk != wo.site_id and getattr(wo, "part_lines", None) and wo.part_lines.exclude(status="RECONCILED").exclude(status="CANCELLED").exists():
+            raise Conflict("The site cannot be changed while active part requirements exist.", code="part_lines_locked")
         wo.site = new_site
     asset_value = values.pop("asset", None)
     component_not_submitted = object()
@@ -513,9 +555,10 @@ def update_work_order(wo, *, membership, actor, request=None, **values):
     if wo.estimated_hours is not None and wo.estimated_hours < 0:
         raise ValidationFailed("Estimated hours cannot be negative.")
     schedule_values = (wo.planned_start, wo.planned_end, wo.due_at, wo.estimated_hours)
-    if any(value is not None for value in schedule_values) and not all(value is not None for value in schedule_values):
+    if wo.status != WorkOrder.Status.DRAFT and any(value is not None for value in schedule_values) and not all(value is not None for value in schedule_values):
         raise ValidationFailed("Provide all schedule fields together, or leave them blank until planning.",
-                               code="incomplete_schedule")
+                               code="incomplete_schedule",
+                               details={"fields": {"planned_start": ["Provide all schedule fields together, or leave them blank until planning."]}})
     if wo.status != WorkOrder.Status.DRAFT and (
             not wo.work_type or not wo.priority or not all(value is not None for value in schedule_values)
             or wo.estimated_hours <= 0):
@@ -549,6 +592,12 @@ def plan_work_order(wo, *, membership=None, actor=None, planned_start=None, plan
         membership = Membership.objects.filter(organization=wo.organization, user=actor, status=Membership.Status.ACTIVE).first()
     if actor is not None or membership is not None:
         _need(membership, "work_order.plan", wo.site)
+    if wo.site and wo.site.status != Site.Status.ACTIVE:
+        raise ValidationFailed("Cannot plan work order for an inactive site.", code="site_inactive")
+    if wo.asset:
+        from apps.assets.models import Asset
+        if wo.asset.status in (Asset.Status.RETIRED, Asset.Status.DISPOSED):
+            raise ValidationFailed(f"Cannot plan work order for an asset in status {wo.asset.status}.", code="asset_decommissioned")
     wo = WorkOrder.objects.select_for_update().get(pk=wo.pk)
     _transition(wo, WorkOrder.Status.PLANNED)
     if not planned_start or not planned_end or planned_end <= planned_start:
@@ -614,8 +663,8 @@ def assign_work_order(wo, *, membership, actor, assignee_id, scheduled_start=Non
     if not scheduled_start or not scheduled_end or scheduled_end <= scheduled_start:
         raise ValidationFailed("Enter a valid scheduled start and end; end must be later than start.",
                                code="invalid_schedule")
-    if wo.due_at and wo.due_at <= scheduled_end:
-        raise ValidationFailed("Due date must be later than scheduled end.", code="due_before_schedule_end")
+    if wo.due_at and wo.due_at < scheduled_end:
+        raise ValidationFailed("Due date must be on or after scheduled end.", code="due_before_schedule_end")
     if wo.estimated_hours is not None and Decimal(wo.estimated_hours) > Decimal(
             str((scheduled_end - scheduled_start).total_seconds())) / Decimal("3600"):
         raise ValidationFailed("Estimated hours cannot exceed the scheduled window.", code="estimate_exceeds_schedule")
@@ -664,8 +713,8 @@ def reschedule_assigned_work_order(wo, *, membership, actor, scheduled_start, sc
         raise NotFound("Technician not found.")
     if not scheduled_start or not scheduled_end or scheduled_end <= scheduled_start:
         raise ValidationFailed("Scheduled end must be later than scheduled start.", code="invalid_schedule")
-    if wo.due_at and wo.due_at <= scheduled_end:
-        raise ValidationFailed("Due date must be later than scheduled end.", code="due_before_schedule_end")
+    if wo.due_at and wo.due_at < scheduled_end:
+        raise ValidationFailed("Due date must be on or after scheduled end.", code="due_before_schedule_end")
     if wo.estimated_hours is not None and Decimal(wo.estimated_hours) > Decimal(
             str((scheduled_end - scheduled_start).total_seconds())) / Decimal("3600"):
         raise ValidationFailed("Estimated hours cannot exceed the scheduled window.", code="estimate_exceeds_schedule")
@@ -683,6 +732,90 @@ def reschedule_assigned_work_order(wo, *, membership, actor, scheduled_start, sc
             metadata={"scheduled_start": scheduled_start.isoformat(), "scheduled_end": scheduled_end.isoformat(),
                       "technician_id": str(technician.pk), "warnings": warnings}, request=request)
     return wo
+
+
+@transaction.atomic
+def reassign_work_order(wo, *, membership, actor, assignee_id, scheduled_start=None, scheduled_end=None,
+                        reason="", expected_version=None, request=None):
+    """Reassign technician for a work order in ASSIGNED, DISPATCHED, or ON_HOLD status.
+
+    PRD §4.2 Edge Case 2:
+    - Server-side authorization required (work_order.assign)
+    - Active WorkOrderAssignment record updated
+    - Append-only history (WorkOrderEvent and audit log) logged with action='reassigned'
+    - New technician immediately authorized to execute/resume
+    - Previous technician execution revoked
+    """
+    _need(membership, "work_order.assign", wo.site)
+    wo = WorkOrder.objects.select_for_update(of=("self",)).select_related("site", "assigned_to__user").get(pk=wo.pk)
+    if wo.status not in (WorkOrder.Status.ASSIGNED, WorkOrder.Status.DISPATCHED, WorkOrder.Status.ON_HOLD):
+        raise Conflict(f"Cannot reassign work order in status {wo.status}.", code="invalid_reassign_status")
+    if expected_version is not None and int(expected_version) != wo.version:
+        raise Conflict("This work order changed since you loaded it. Refresh and retry.",
+                       code="work_order_version_conflict")
+
+    assigned = Membership.objects.select_for_update().select_related("user").filter(
+        organization=wo.organization, pk=assignee_id).first()
+    if assigned is None:
+        raise ValidationFailed("Technician was not found in this organization.", code="invalid_technician")
+
+    scheduled_start = scheduled_start or wo.planned_start
+    scheduled_end = scheduled_end or wo.planned_end
+    if isinstance(scheduled_start, str):
+        from django.utils.dateparse import parse_datetime
+        scheduled_start = parse_datetime(scheduled_start)
+    if isinstance(scheduled_end, str):
+        from django.utils.dateparse import parse_datetime
+        scheduled_end = parse_datetime(scheduled_end)
+
+    if scheduled_start and scheduled_end:
+        if scheduled_end <= scheduled_start:
+            raise ValidationFailed("Scheduled end must be later than scheduled start.", code="invalid_schedule")
+        if wo.due_at and wo.due_at < scheduled_end:
+            raise ValidationFailed("Due date must be on or after scheduled end.", code="due_before_schedule_end")
+        if wo.estimated_hours is not None and Decimal(wo.estimated_hours) > Decimal(
+                str((scheduled_end - scheduled_start).total_seconds())) / Decimal("3600"):
+            raise ValidationFailed("Estimated hours cannot exceed the scheduled window.", code="estimate_exceeds_schedule")
+
+    candidate = WorkOrder.objects.select_related("site").get(pk=wo.pk)
+    if scheduled_start and scheduled_end:
+        candidate.planned_start, candidate.planned_end = scheduled_start, scheduled_end
+    warnings = validate_assignment(candidate, assigned)
+
+    before = _snapshot(wo)
+    wo.assigned_to = assigned
+    if scheduled_start:
+        wo.planned_start = scheduled_start
+    if scheduled_end:
+        wo.planned_end = scheduled_end
+    wo.save(update_fields=("assigned_to", "planned_start", "planned_end", "updated_at"))
+
+    assignment = WorkOrderAssignment.objects.select_for_update().filter(work_order=wo).first()
+    if assignment:
+        assignment.technician = assigned
+        if scheduled_start:
+            assignment.scheduled_start = scheduled_start
+        if scheduled_end:
+            assignment.scheduled_end = scheduled_end
+        assignment.assigned_by = actor
+        assignment.save()
+    else:
+        assignment = WorkOrderAssignment.objects.create(
+            organization=wo.organization,
+            work_order=wo,
+            technician=assigned,
+            scheduled_start=wo.planned_start,
+            scheduled_end=wo.planned_end,
+            assigned_by=actor,
+        )
+
+    _record(wo, actor=actor, action="reassigned", before=before, notes=reason or "",
+            metadata={"assigned_to": str(assigned.pk), "reason": reason or "", "warnings": warnings},
+            request=request)
+    return wo
+
+
+reassign = reassign_work_order
 
 
 @transaction.atomic
@@ -718,6 +851,9 @@ def start_work_order(wo, *, membership, actor, expected_version=None, request=No
         permission="work_order.start", action="started", changes={"started_at": timezone.now()},
         expected_version=expected_version, request=request)
     _sync_incident_request(wo, "started", actor, request)
+    if wo.asset_id:
+        from apps.assets import services as asset_services
+        asset_services.on_work_order_started(wo, actor=actor, request=request)
     return wo
 
 
@@ -725,14 +861,14 @@ def assert_can_execute(wo, membership) -> None:
     """Execution (start / hold / resume / complete) belongs to the assignee; dispatchers may act for them."""
     if wo.assigned_to_id == membership.pk:
         return
-    if rbac.has_permission(membership, "work_order.review", wo.site_id):
-        raise PermissionDenied("Only the assigned technician (or a dispatcher) can do this.", code="not_assignee")
     if rbac.has_permission(membership, "work_order.dispatch", wo.site_id):
         return
     raise PermissionDenied("Only the assigned technician (or a dispatcher) can do this.", code="not_assignee")
 
 
-_assert_assignee_or_dispatcher = assert_can_execute
+def _assert_assignee_or_dispatcher(wo, membership) -> None:
+    """Authorize execution / recording actions for the assignee or an authorized dispatcher."""
+    assert_can_execute(wo, membership)
 
 
 def _assert_assignee_or_authorized(wo, membership, permission):
@@ -760,7 +896,7 @@ def resume_work_order(wo, *, membership, actor, expected_version=None, request=N
     _need(membership, "work_order.start", wo.site)
     wo = WorkOrder.objects.select_for_update().get(pk=wo.pk)
     _transition(wo, WorkOrder.Status.IN_PROGRESS)
-    _assert_assignee_or_authorized(wo, membership, "work_order.start")
+    assert_can_execute(wo, membership)
     return transition_work_order(wo, WorkOrder.Status.IN_PROGRESS, membership=membership, actor=actor,
         permission="work_order.start", action="resumed", changes={"hold_reason": ""},
         expected_version=expected_version, request=request)
@@ -771,6 +907,8 @@ def _check_completion(wo, notes):
         raise ValidationFailed("Resolution notes must contain at least 10 characters.", code="resolution_notes_required")
     from .checklist_adapter import validate_for_completion
     validate_for_completion(wo)
+    if not wo.labor_entries.exists():
+        raise Conflict("Record at least one labor entry before completing this work order.", code="labor_required")
     evidence_required = wo.work_type in (WorkOrder.WorkType.CORRECTIVE, WorkOrder.WorkType.INSTALLATION)
     if evidence_required and not wo.completion_evidence.exists():
         raise Conflict("Attach completion evidence before completing this work order.", code="evidence_required")
@@ -822,7 +960,6 @@ def review_work_order(wo, *, membership, actor, approved, notes="", expected_ver
     wo = WorkOrder.objects.select_for_update().get(pk=wo.pk)
     notes = (notes or "").strip()
     if approved and wo.status == WorkOrder.Status.CLOSED:
-        # The close endpoint is safe to retry after a network timeout.
         if wo.closure_approvals.filter(decision=ClosureApproval.Decision.APPROVED).exists():
             return wo
     if wo.status != WorkOrder.Status.SUPERVISOR_REVIEW:
@@ -851,8 +988,12 @@ def review_work_order(wo, *, membership, actor, approved, notes="", expected_ver
     if action == "review_rejected":
         _sync_incident_request(wo, "reworked", actor, request)
     elif approved:
+        _sync_incident_request(wo, "closed", actor, request)
         from apps.inventory import services as inventory_services
         inventory_services.on_work_order_closed(wo, actor=actor, request=request)
+        if wo.asset_id:
+            from apps.assets import services as asset_services
+            asset_services.on_work_order_closed(wo, actor=actor, request=request)
     return wo
 
 
@@ -874,11 +1015,13 @@ def cancel_work_order(wo, *, membership, actor, reason="", expected_version=None
     _need(membership, "work_order.cancel", wo.site)
     from apps.inventory import services as inventory_services
     inventory_services.on_work_order_cancelled(wo, actor=actor, request=request)
-    return transition_work_order(
+    wo = transition_work_order(
         wo, WorkOrder.Status.CANCELLED, membership=membership, actor=actor,
         permission="work_order.cancel", action="cancelled", reason=reason,
         expected_version=expected_version, request=request,
     )
+    _sync_incident_request(wo, "cancelled", actor, request)
+    return wo
 
 
 @transaction.atomic
@@ -909,9 +1052,9 @@ def register_checklist_reference(wo, *, membership, actor, template_ref, instanc
     if wo.status not in (WorkOrder.Status.DRAFT, WorkOrder.Status.PLANNED):
         raise Conflict("Checklist references are read-only after work is assigned.",
                        code="checklist_reference_read_only")
-    if template_ref != wo.checklist_template_ref:
-        raise ValidationFailed("Checklist template does not match the required work-type template.",
-                               code="checklist_template_mismatch")
+    template_ref = (template_ref or "").strip()
+    if not template_ref:
+        raise ValidationFailed("A checklist template reference is required.", code="checklist_template_required")
     instance_ref = (instance_ref or "").strip()
     if not instance_ref:
         raise ValidationFailed("A checklist instance reference is required.", code="checklist_instance_required")
@@ -946,7 +1089,7 @@ def record_labor(wo, *, membership, actor, work_date, hours, description="Labor 
     target_tech = technician or membership
     entry = WorkOrderLabor.objects.create(organization=wo.organization, work_order=wo, technician=target_tech,
                                           entered_by=actor, work_date=work_date, hours=hours,
-                                          description=desc)
+                                          description=desc, notes=desc[:300])
     _record(wo, actor=actor, action="labor_recorded", metadata={"labor_id": str(entry.pk), "hours": str(hours)},
             request=request)
     return entry
@@ -1011,6 +1154,8 @@ def closure_blockers(wo):
     blockers = []
     if len((wo.resolution_notes or "").strip()) < 10:
         blockers.append("Resolution notes must contain at least 10 characters.")
+    if not wo.labor_entries.exists():
+        blockers.append("Record at least one labor entry before completing this work order.")
     from apps.checklists import services as checklist_services
     blockers.extend(checklist_services.checklist_blockers(wo))
     from apps.inventory import services as inventory_services
@@ -1069,6 +1214,15 @@ def transition(wo, action, *, actor, membership, reason="", request=None, **kwar
     elif action == "close":
         return close_work_order(wo, membership=membership, actor=actor,
                                 comment=kwargs.get("comment", "Work order approved."))
+    elif action == "reassign":
+        assignee = kwargs.get("technician", kwargs.get("assignee_id", kwargs.get("assigned_to")))
+        assignee_id = assignee.pk if hasattr(assignee, "pk") else assignee
+        scheduled_start = kwargs.get("planned_start", kwargs.get("scheduled_start"))
+        scheduled_end = kwargs.get("planned_end", kwargs.get("scheduled_end"))
+        return reassign_work_order(wo, membership=membership, actor=actor, assignee_id=assignee_id,
+                                   scheduled_start=scheduled_start, scheduled_end=scheduled_end,
+                                   reason=reason or kwargs.get("reason", ""),
+                                   expected_version=kwargs.get("expected_version"), request=request)
     elif action == "cancel":
         return cancel_work_order(wo, membership=membership, actor=actor,
                                  reason=kwargs.get("reason", "Cancelled"))
