@@ -1613,4 +1613,112 @@ body.fx-app {
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid #cbd5e1;
-}
+}
+
+/* ==========================================================================
+   HTMX Loading States & Animations
+   ========================================================================== */
+
+/* Global top progress indicator for HTMX requests */
+#global-loading-indicator,
+.fx-global-loading-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 99999;
+  pointer-events: none;
+  background: linear-gradient(90deg, #0d6efd 0%, #00b4d8 50%, #0d6efd 100%);
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+#global-loading-indicator.htmx-request,
+.fx-global-loading-bar.htmx-request {
+  opacity: 1;
+  animation: fx-progress-shimmer 1.2s infinite linear;
+}
+
+@keyframes fx-progress-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Agreement list card loading states */
+#agreements-list-card {
+  position: relative;
+}
+
+#agreements-list-card.htmx-request {
+  cursor: progress;
+}
+
+/* Card top shimmer bar */
+.agreements-loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0d6efd 0%, #00b4d8 50%, #0d6efd 100%);
+  background-size: 200% 100%;
+  border-top-left-radius: var(--fx-radius, 10px);
+  border-top-right-radius: var(--fx-radius, 10px);
+  opacity: 0;
+  z-index: 5;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+#agreements-list-card.htmx-request .agreements-loading-bar {
+  opacity: 1;
+  animation: fx-progress-shimmer 1.2s infinite linear;
+}
+
+/* Filter toolbar inline loading indicator */
+.agreements-filter-spinner {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s;
+}
+
+#agreements-list-card.htmx-request .agreements-filter-spinner {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Table loading overlay */
+.agreements-table-overlay {
+  position: absolute;
+  inset: 0;
+  min-height: 180px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+[data-bs-theme="dark"] .agreements-table-overlay {
+  background: rgba(18, 26, 38, 0.78);
+}
+
+#agreements-list-card.htmx-request .agreements-table-overlay {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* Dim table contents during loading */
+#agreements-list-card.htmx-request #agreements-table,
+#agreements-list-card.htmx-request .pagination {
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
