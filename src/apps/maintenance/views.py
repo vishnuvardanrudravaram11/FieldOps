@@ -4,12 +4,11 @@ generate / enable / disable buttons post to endpoints that call the services (no
 from __future__ import annotations
 
 import logging
+
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-
-logger = logging.getLogger(__name__)
 from django.shortcuts import redirect, render
 from django.views import View
 
@@ -19,12 +18,14 @@ from apps.checklists.models import ChecklistTemplate
 from apps.core.exceptions import DomainError
 from apps.rbac import services as rbac
 from apps.sites import selectors as site_selectors
-from apps.sites.views import form_page, need, or404
+from apps.sites.views import need, or404
 from apps.ui.mixins import TenantPermissionMixin
 
 from . import selectors, services
 from .forms import PlanForm, ScheduleForm
 from .models import MaintenanceSchedule
+
+logger = logging.getLogger(__name__)
 
 
 class PmBase(TenantPermissionMixin, View):
@@ -118,7 +119,7 @@ class PlanCreateView(PmBase):
                 form.add_error(None, exc.message)
             except PermissionDenied:
                 form.add_error(None, "You do not have permission to create a maintenance plan for this asset's site.")
-            except IntegrityError as exc:
+            except IntegrityError:
                 form.add_error(None, "A plan with this name already exists for this asset or a database conflict occurred.")
             except Exception as exc:
                 logger.exception("Error creating maintenance plan: %s", exc)
@@ -324,26 +325,39 @@ class ScheduleActionView(ScheduleBase):
 
 class DueView(PmBase):
     def get(self, request):
-        m, org = request.membership, request.organization
-        qs = selectors.schedules_for(m, org).filter(is_active=True, plan__is_active=True)
-        site = (request.GET.get("site") or "").strip()
-        if site:
-            parsed = selectors._uuid_or_none(site)
-            qs = qs.filter(plan__site_id=parsed) if parsed else qs.none()
-        all_rows = selectors.describe_schedule_rows(qs.order_by("next_due_date", "plan__name"))
+        m = request.membership
+        org = request.organization or getattr(m, "organization", None)
+        try:
+            qs = selectors.schedules_for(m, org).filter(is_active=True, plan__is_active=True)
+            site = (request.GET.get("site") or "").strip()
+            if site:
+                parsed = selectors._uuid_or_none(site)
+                qs = qs.filter(plan__site_id=parsed) if parsed else qs.none()
+            all_rows = selectors.describe_schedule_rows(qs.order_by("next_due_date", "plan__name"))
+        except Exception as exc:
+            logger.exception("Error loading due schedules: %s", exc)
+            all_rows = []
+
         total_schedules = len(all_rows)
-        due_count = sum(1 for r in all_rows if r["state"] == "DUE")
-        scheduled_count = sum(1 for r in all_rows if r["state"] == "SCHEDULED")
+        due_count = sum(1 for r in all_rows if r.get("state") == "DUE")
+        scheduled_count = sum(1 for r in all_rows if r.get("state") == "SCHEDULED")
         state = (request.GET.get("state") or "").strip()
         if state in ("DUE", "SCHEDULED"):
-            rows = [r for r in all_rows if r["state"] == state]
+            rows = [r for r in all_rows if r.get("state") == state]
         else:
             rows = all_rows
         page = Paginator(rows, 25).get_page(request.GET.get("page"))
+
+        try:
+            sites = site_selectors.sites_for(m, org, "maintenance.view").order_by("code")
+        except Exception as exc:
+            logger.exception("Error loading sites for due view: %s", exc)
+            sites = []
+
         return render(request, "maintenance/due.html", {
             "page": page, "filters": request.GET,
-            "sites": site_selectors.sites_for(m, org, "maintenance.view").order_by("code"),
-            "can_generate": rbac.has_permission_anywhere(m, "maintenance.generate"),
+            "sites": sites,
+            "can_generate": rbac.has_permission_anywhere(m, "maintenance.generate") if m else False,
             "total_schedules": total_schedules,
             "due_count": due_count,
             "scheduled_count": scheduled_count})
@@ -351,12 +365,39 @@ class DueView(PmBase):
 
 class HistoryView(PmBase):
     def get(self, request):
-        m, org = request.membership, request.organization
-        qs = selectors.filter_cycles(selectors.cycles_for(m, org), request.GET)
-        compliance = selectors.pm_compliance_ratio(m, org, plan_id=request.GET.get("plan"))
-        page = _paged(request, qs, 25)
-        page.object_list = _with_state(page.object_list)
+        m = request.membership
+        org = request.organization or getattr(m, "organization", None)
+        try:
+            cycles_qs = selectors.cycles_for(m, org)
+            qs = selectors.filter_cycles(cycles_qs, request.GET)
+        except Exception as exc:
+            logger.exception("Error loading cycles: %s", exc)
+            from .models import MaintenanceCycle
+            qs = MaintenanceCycle.objects.none()
+
+        try:
+            compliance = selectors.pm_compliance_ratio(m, org, plan_id=request.GET.get("plan"))
+        except Exception as exc:
+            logger.exception("Error loading PM compliance ratio: %s", exc)
+            compliance = {
+                "scheduled": 0, "on_time": 0, "overdue": 0, "skipped": 0,
+                "pending": 0, "compliance_ratio": 100.0, "value": "100.0%",
+            }
+
+        try:
+            page = _paged(request, qs, 25)
+            page.object_list = _with_state(page.object_list)
+        except Exception as exc:
+            logger.exception("Error paginating cycles: %s", exc)
+            page = Paginator([], 25).get_page(1)
+
+        try:
+            plans = selectors.plans_for(m, org).order_by("name")
+        except Exception as exc:
+            logger.exception("Error loading plans for history: %s", exc)
+            plans = []
+
         return render(request, "maintenance/history.html", {
             "page": page, "filters": request.GET,
-            "plans": selectors.plans_for(m, org).order_by("name"),
+            "plans": plans,
             "compliance": compliance})
