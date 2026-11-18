@@ -9,7 +9,12 @@ An action with no mapping is DENIED (fail closed).
 """
 from django.conf import settings
 from rest_framework import permissions
-from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+from rest_framework.exceptions import (
+    MethodNotAllowed as DRFMethodNotAllowed,
+)
+from rest_framework.exceptions import (
+    PermissionDenied as DRFPermissionDenied,
+)
 
 from apps.core import tenant
 from apps.core.exceptions import PermissionDenied as DomainPermissionDenied
@@ -25,6 +30,18 @@ class TenantAPIMixin:
 
     permission_map: dict[str, str] = {}
     required_permission: str | None = None
+
+    def initial(self, request, *args, **kwargs):
+        method = request.method.lower()
+        if method != "options":
+            if getattr(self, "action_map", None):
+                if method not in self.action_map:
+                    raise DRFMethodNotAllowed(request.method)
+            else:
+                allowed = {m.lower() for m in self.allowed_methods}
+                if method not in allowed:
+                    raise DRFMethodNotAllowed(request.method)
+        super().initial(request, *args, **kwargs)
 
     def get_permissions(self):
         return [permissions.IsAuthenticated(), HasOrgPermission()]
@@ -62,6 +79,8 @@ class HasOrgPermission(permissions.BasePermission):
     message = "You do not have permission to perform this action."
 
     def has_permission(self, request, view):
+        if request.method == "OPTIONS" or getattr(view, "action", None) == "metadata":
+            return True
         membership = getattr(request, "membership", None)
         if membership is None:
             self.message = "Select an organization (X-Organization header) with an active membership."
@@ -71,6 +90,37 @@ class HasOrgPermission(permissions.BasePermission):
             return False  # unmapped action -> deny
         if code == MEMBER_ONLY:
             return membership.is_active  # self-scoped resources (own notifications)
+        if isinstance(code, tuple | list | set):
+            if not any(rbac.catalog.is_registered(c) for c in code):
+                return False
+        elif not rbac.catalog.is_registered(code):
+            return False
+        from apps.ui.utils import is_client_membership
+        if is_client_membership(membership) and not request.path.startswith("/api/v1/portal/"):
+            if rbac.has_permission_anywhere(membership, code):
+                return True
+            client_incident_paths = (
+                "/api/v1/service-requests",
+                "/service-requests",
+                "/api/v1/requests",
+                "/requests",
+            )
+            client_incident_perms = {
+                "incident.view", "incident.view_assigned", "incident.view_owned",
+                "incident.report_owned", "incident.attach", "incident.confirm",
+                "incident.create",
+            }
+            is_client_incident = (
+                any(request.path.startswith(p) for p in client_incident_paths)
+                and code in client_incident_perms
+            )
+            if not is_client_incident:
+                if not code.startswith("portal.request."):
+                    return False
+        if code == MEMBER_ONLY:
+            return membership.is_active  # self-scoped resources (own notifications)
+        if isinstance(code, tuple | list | set):
+            return any(rbac.has_permission_anywhere(membership, c) for c in code)
         return rbac.has_permission_anywhere(membership, code)
 
 
@@ -82,7 +132,7 @@ class PlatformAPIMixin:
 
     def perform_authentication(self, request):
         super().perform_authentication(request)
-        if request.user.is_authenticated and request.user.is_platform_admin:
+        if request.user.is_authenticated and (getattr(request.user, "is_platform_admin", False) or request.user.is_superuser):
             tenant.set_current(tenant.PLATFORM)
 
 
@@ -90,4 +140,8 @@ class IsPlatformAdmin(permissions.BasePermission):
     message = "Platform administrator access required."
 
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.is_platform_admin)
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and (getattr(request.user, "is_platform_admin", False) or request.user.is_superuser)
+        )

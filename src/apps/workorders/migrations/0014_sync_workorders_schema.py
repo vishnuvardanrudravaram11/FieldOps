@@ -21,11 +21,11 @@ class Migration(migrations.Migration):
             DO $$
             BEGIN
                 IF EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'workorders_workorder' AND column_name = 'number'
                 ) THEN
-                    UPDATE workorders_workorder 
-                    SET order_number = number 
+                    UPDATE workorders_workorder
+                    SET order_number = number
                     WHERE (order_number IS NULL OR order_number = '') AND number IS NOT NULL;
 
                     ALTER TABLE workorders_workorder ALTER COLUMN number DROP NOT NULL;
@@ -43,11 +43,11 @@ class Migration(migrations.Migration):
             DO $$
             BEGIN
                 IF EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'workorders_workorderlabor' AND column_name = 'recorded_by_id'
                 ) THEN
-                    UPDATE workorders_workorderlabor 
-                    SET entered_by_id = recorded_by_id 
+                    UPDATE workorders_workorderlabor
+                    SET entered_by_id = recorded_by_id
                     WHERE entered_by_id IS NULL AND recorded_by_id IS NOT NULL;
                 END IF;
             END $$;
@@ -62,31 +62,31 @@ class Migration(migrations.Migration):
             DO $$
             BEGIN
                 IF EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'workorders_workordermaterial' AND column_name = 'description'
                 ) THEN
-                    UPDATE workorders_workordermaterial 
-                    SET item_name = description 
+                    UPDATE workorders_workordermaterial
+                    SET item_name = description
                     WHERE (item_name IS NULL OR item_name = '') AND description IS NOT NULL;
 
                     ALTER TABLE workorders_workordermaterial ALTER COLUMN description DROP NOT NULL;
                 END IF;
                 IF EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'workorders_workordermaterial' AND column_name = 'part_number'
                 ) THEN
-                    UPDATE workorders_workordermaterial 
-                    SET part_reference = part_number 
+                    UPDATE workorders_workordermaterial
+                    SET part_reference = part_number
                     WHERE (part_reference IS NULL OR part_reference = '') AND part_number IS NOT NULL;
 
                     ALTER TABLE workorders_workordermaterial ALTER COLUMN part_number DROP NOT NULL;
                 END IF;
                 IF EXISTS (
-                    SELECT 1 FROM information_schema.columns 
+                    SELECT 1 FROM information_schema.columns
                     WHERE table_name = 'workorders_workordermaterial' AND column_name = 'recorded_by_id'
                 ) THEN
-                    UPDATE workorders_workordermaterial 
-                    SET entered_by_id = recorded_by_id 
+                    UPDATE workorders_workordermaterial
+                    SET entered_by_id = recorded_by_id
                     WHERE entered_by_id IS NULL AND recorded_by_id IS NOT NULL;
                 END IF;
             END $$;

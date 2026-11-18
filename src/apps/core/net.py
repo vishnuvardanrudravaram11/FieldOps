@@ -35,9 +35,53 @@ def axes_username(request, credentials=None) -> str | None:
     (key ``username``, even though our USERNAME_FIELD is ``email``), normalised so that case/whitespace
     variants cannot dodge the failure counter."""
     value = None
-    if credentials:
-        value = credentials.get("username")
-    if value is None:
-        data = getattr(request, "data", None) or request.POST
-        value = data.get("username")
-    return value.strip().lower() if isinstance(value, str) and value.strip() else None
+    if credentials and isinstance(credentials, dict):
+        if isinstance(credentials.get("body"), dict):
+            value = credentials["body"].get("username") or credentials["body"].get("email")
+        if not value:
+            value = credentials.get("username") or credentials.get("email")
+    if value is None and request:
+        data = getattr(request, "data", None) or getattr(request, "POST", None)
+        if data and hasattr(data, "get"):
+            if isinstance(data.get("body"), dict):
+                value = data["body"].get("username") or data["body"].get("email")
+            if not value:
+                value = data.get("username") or data.get("email")
+        if value is None:
+            # For JSON API requests (like /api/v1/auth/token/) where DRF hasn't yet parsed request.data
+            try:
+                body = getattr(request, "_body", None)
+                if body is None and hasattr(request, "body"):
+                    body = request.body
+                if body:
+                    import json
+                    payload = json.loads(body.decode("utf-8", errors="replace"))
+                    if isinstance(payload, dict):
+                        if isinstance(payload.get("body"), dict):
+                            value = payload["body"].get("username") or payload["body"].get("email")
+                        if not value:
+                            value = payload.get("username") or payload.get("email")
+            except Exception:
+                pass
+    return value.strip().lower()[:254] if isinstance(value, str) and value.strip() else None
+
+
+_SUPPRESSED_EMAIL_SUFFIXES = (
+    "@example.com",
+    ".example",
+    ".example.com",
+    ".test",
+    ".invalid",
+    ".local",
+)
+
+
+def is_suppressed_test_email(email: str) -> bool:
+    """Return True when ``email`` belongs to a reserved/test domain and should not trigger real SMTP."""
+    from django.conf import settings
+
+    email_backend = getattr(settings, "EMAIL_BACKEND", "").lower()
+    if "locmem" in email_backend:
+        return False
+    cleaned = (email or "").strip().lower()
+    return bool(cleaned) and any(cleaned.endswith(suffix) for suffix in _SUPPRESSED_EMAIL_SUFFIXES)

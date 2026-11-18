@@ -1,10 +1,18 @@
+import fnmatch
+import hashlib
+import hmac
+import json
 import logging
-from typing import Any, Callable
+import urllib.request
+from collections.abc import Callable
+from typing import Any
+from urllib.parse import urlparse
 
 from django.db import transaction
 from django.utils import timezone
 
-from apps.core.models import IntegrationEvent
+from apps.core.models import IntegrationEvent, WebhookEndpoint
+from apps.core.tenant import tenant_context
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +68,78 @@ def deliver_event(event: IntegrationEvent) -> bool:
     handlers = get_handlers(event.event_type)
     for handler in handlers:
         handler(event)
+    dispatch_webhooks(event)
     return True
+
+
+def dispatch_webhooks(event: IntegrationEvent) -> None:
+    """Deliver an IntegrationEvent to active matching WebhookEndpoints for its organization."""
+    endpoints = list(
+        WebhookEndpoint.objects.unscoped().filter(
+            organization_id=event.organization_id,
+            is_active=True,
+        )
+    )
+    if not endpoints:
+        return
+
+    body_obj = {
+        "id": str(event.pk),
+        "event_type": event.event_type,
+        "aggregate_type": event.aggregate_type,
+        "aggregate_id": event.aggregate_id,
+        "payload": event.payload,
+        "metadata": event.metadata,
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+    }
+    body_bytes = json.dumps(body_obj, default=str, sort_keys=True).encode("utf-8")
+
+    for endpoint in endpoints:
+        patterns = [p.strip() for p in (endpoint.event_pattern or "*").split(",") if p.strip()] or ["*"]
+        if not any(fnmatch.fnmatchcase(event.event_type, pat) for pat in patterns):
+            continue
+        parsed = urlparse(endpoint.target_url or "")
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError(f"Unsupported webhook target URL scheme for endpoint {endpoint.pk}")
+
+        secret = (endpoint.secret_token or "").encode("utf-8")
+        signature = hmac.new(secret, body_bytes, hashlib.sha256).hexdigest()
+        req = urllib.request.Request(
+            endpoint.target_url,
+            data=body_bytes,
+            headers={
+                "Content-Type": "application/json",
+                "X-FieldOps-Signature": signature,
+                "X-FieldOps-Event": event.event_type,
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                status_code = getattr(resp, "status", 200)
+                if status_code >= 400:
+                    raise RuntimeError(f"Webhook endpoint {endpoint.pk} returned HTTP {status_code}")
+        except Exception as exc:
+            logger.warning(
+                "Webhook delivery attempt failed for endpoint %s (event %s): %s",
+                endpoint.pk,
+                event.pk,
+                exc,
+            )
+            raise
+
+
+
+register_handler("*", dispatch_webhooks)
 
 
 @transaction.atomic
 def process_single_event(event_id: str) -> IntegrationEvent:
     """Process a single event with row locking, idempotency check, and retry tracking."""
     event = (
-        IntegrationEvent.objects.select_for_update(skip_locked=True)
+        IntegrationEvent.objects.unscoped()
+        .select_for_update(skip_locked=True)
+        .select_related("organization")
         .filter(pk=event_id)
         .first()
     )
@@ -76,24 +148,25 @@ def process_single_event(event_id: str) -> IntegrationEvent:
     if event.status == IntegrationEvent.Status.PUBLISHED:
         return event
 
-    event.status = IntegrationEvent.Status.PROCESSING
-    event.save(update_fields=["status", "updated_at"])
+    with tenant_context(event.organization):
+        event.status = IntegrationEvent.Status.PROCESSING
+        event.save(update_fields=["status", "updated_at"])
 
-    try:
-        deliver_event(event)
-        event.status = IntegrationEvent.Status.PUBLISHED
-        event.published_at = timezone.now()
-        event.error_message = ""
-        event.save(update_fields=["status", "published_at", "error_message", "updated_at"])
-    except Exception as exc:
-        logger.exception("Failed delivering IntegrationEvent %s: %s", event.pk, exc)
-        event.retry_count += 1
-        event.error_message = str(exc)
-        if event.retry_count >= event.max_retries:
-            event.status = IntegrationEvent.Status.FAILED
-        else:
-            event.status = IntegrationEvent.Status.PENDING
-        event.save(update_fields=["status", "retry_count", "error_message", "updated_at"])
+        try:
+            deliver_event(event)
+            event.status = IntegrationEvent.Status.PUBLISHED
+            event.published_at = timezone.now()
+            event.error_message = ""
+            event.save(update_fields=["status", "published_at", "error_message", "updated_at"])
+        except Exception as exc:
+            logger.exception("Failed delivering IntegrationEvent %s: %s", event.pk, exc)
+            event.retry_count += 1
+            event.error_message = str(exc)
+            if event.retry_count >= event.max_retries:
+                event.status = IntegrationEvent.Status.FAILED
+            else:
+                event.status = IntegrationEvent.Status.PENDING
+            event.save(update_fields=["status", "retry_count", "error_message", "updated_at"])
 
     return event
 
@@ -117,20 +190,3 @@ def process_pending_events(batch_size: int = 50) -> int:
             processed_count += 1
 
     return processed_count
-
-
-def retry_failed_event(event_id: str) -> IntegrationEvent:
-    """Manually re-queue an integration event that has failed or exhausted retries."""
-    from apps.core.exceptions import NotFound, ValidationFailed
-
-    event = IntegrationEvent.objects.unscoped().filter(pk=event_id).first()
-    if not event:
-        raise NotFound("Integration event not found.")
-    if event.status == IntegrationEvent.Status.PUBLISHED:
-        raise ValidationFailed("Cannot retry an already published event.")
-
-    event.status = IntegrationEvent.Status.PENDING
-    event.retry_count = 0
-    event.error_message = ""
-    event.save(update_fields=["status", "retry_count", "error_message", "updated_at"])
-    return event

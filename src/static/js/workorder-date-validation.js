@@ -6,42 +6,123 @@
   const form = start?.form;
   if (!start || !end || !due || !hours || !form?.matches("[data-workorder-date-validation]")) return;
 
-  const rules = [
-    {field: end, error: document.getElementById("planned-end-rule-error"), message: "Planned end must be later than planned start."},
-      {field: due, error: document.getElementById("due-at-rule-error"), message: "Due date must be later than planned end."},
-  ];
+  const startError = document.getElementById("planned-start-rule-error");
+  const endError = document.getElementById("planned-end-rule-error");
+  const dueError = document.getElementById("due-at-rule-error");
+  const hoursError = document.getElementById("estimated-hours-rule-error");
 
   function validateDates() {
-    for (const rule of rules) {
-      rule.field.setCustomValidity("");
-      if (rule.error) {
-        rule.error.hidden = true;
-        rule.error.textContent = "";
+    // 0. Planned Start: must not be earlier than incident logged date/time, must be today or incident date
+    if (start) {
+      start.setCustomValidity("");
+      if (startError) {
+        startError.hidden = true;
+        startError.textContent = "";
       }
-      const compareTo = rule.field === end ? start : end;
-      if (!compareTo.value || !rule.field.value || rule.field.value > compareTo.value) continue;
-      rule.field.setCustomValidity(rule.message);
-      if (rule.error) {
-        rule.error.textContent = rule.message;
-        rule.error.hidden = false;
+      if (start.value) {
+        const incidentDt = start.getAttribute("data-incident-datetime");
+        const incidentDate = start.getAttribute("data-incident-date");
+        const today = start.getAttribute("data-today");
+        const startDate = start.value.split("T")[0];
+
+        if (incidentDt && start.value < incidentDt) {
+          const msg = "Planned start cannot be earlier than the incident logged date.";
+          start.setCustomValidity(msg);
+          if (startError) {
+            startError.textContent = msg;
+            startError.hidden = false;
+          }
+        } else if (incidentDate && today) {
+          if (startDate < incidentDate) {
+            const msg = "Planned start cannot be earlier than the incident logged date.";
+            start.setCustomValidity(msg);
+            if (startError) {
+              startError.textContent = msg;
+              startError.hidden = false;
+            }
+          } else if (startDate !== incidentDate && startDate !== today) {
+            const msg = "Planned start date must be today or the incident logged date.";
+            start.setCustomValidity(msg);
+            if (startError) {
+              startError.textContent = msg;
+              startError.hidden = false;
+            }
+          }
+        } else if (today && startDate < today) {
+          const msg = "Planned start date cannot be in the past.";
+          start.setCustomValidity(msg);
+          if (startError) {
+            startError.textContent = msg;
+            startError.hidden = false;
+          }
+        }
       }
     }
 
-    const hoursError = document.getElementById("estimated-hours-rule-error");
+    if (start.value) {
+      end.min = start.value;
+      if (due) due.min = end.value || start.value;
+    }
+
+    // 1. Planned End: must be strictly later than planned start
+    end.setCustomValidity("");
+    if (endError) {
+      endError.hidden = true;
+      endError.textContent = "";
+    }
+    if (start.value && end.value && end.value <= start.value) {
+      const msg = "Planned end must be later than planned start.";
+      end.setCustomValidity(msg);
+      if (endError) {
+        endError.textContent = msg;
+        endError.hidden = false;
+      }
+    }
+
+    // 2. Due At: can be greater than or equal to planned end (due >= end)
+    due.setCustomValidity("");
+    if (dueError) {
+      dueError.hidden = true;
+      dueError.textContent = "";
+    }
+    if (end.value && due.value && due.value < end.value) {
+      const msg = "Due date must be on or after planned end.";
+      due.setCustomValidity(msg);
+      if (dueError) {
+        dueError.textContent = msg;
+        dueError.hidden = false;
+      }
+    } else if (start.value && due.value && due.value <= start.value) {
+      const msg = "Due date must be later than planned start.";
+      due.setCustomValidity(msg);
+      if (dueError) {
+        dueError.textContent = msg;
+        dueError.hidden = false;
+      }
+    }
+
+    // 3. Estimated Hours: positive and within (planned_end - planned_start) window
     hours.setCustomValidity("");
     if (hoursError) {
       hoursError.hidden = true;
       hoursError.textContent = "";
     }
-    if (start.value && end.value && hours.value && end.value > start.value) {
+    if (hours.value && Number(hours.value) <= 0) {
+      const msg = "Estimated hours must be greater than zero.";
+      hours.setCustomValidity(msg);
+      if (hoursError) {
+        hoursError.textContent = msg;
+        hoursError.hidden = false;
+      }
+    } else if (start.value && end.value && hours.value && end.value > start.value) {
       const startMs = new Date(start.value).getTime();
       const endMs = new Date(end.value).getTime();
       const availableMinutes = (endMs - startMs) / 60000;
       if (Number(hours.value) * 60 > availableMinutes + 1e-8) {
-        const message = "Estimated hours cannot exceed the planned start-to-end window.";
-        hours.setCustomValidity(message);
+        const msg = "Estimated hours cannot exceed the planned start-to-end window.";
+        hours.setCustomValidity(msg);
         if (hoursError) {
-          hoursError.textContent = message;
+          hoursError.textContent = msg;
           hoursError.hidden = false;
         }
       }

@@ -159,15 +159,15 @@ def create_provider(org, *, name, contact_name="", email="", phone="", notes="",
     if ServiceProvider.objects.for_organization(org).filter(name__iexact=name).exists():
         raise Conflict("A provider with that name already exists.", code="provider_name_taken")
     if email and email.strip():
-        from django.core.validators import validate_email
         from django.core.exceptions import ValidationError as DjangoValidationError
+        from django.core.validators import validate_email
         try:
             validate_email(email.strip())
         except DjangoValidationError:
             raise ValidationFailed("Invalid email format.", code="invalid_email")
     if email and email.strip():
-        from django.core.validators import validate_email
         from django.core.exceptions import ValidationError as DjangoValidationError
+        from django.core.validators import validate_email
         try:
             validate_email(email.strip())
         except DjangoValidationError:
@@ -546,3 +546,26 @@ def run_alerts(org, today: datetime.date | None = None) -> int:
                          after={"end_date": ag.end_date, "notified": len(users)})
             sent += 1
     return sent
+
+
+def check_coverage_expiry_mid_job(work_order) -> tuple[bool, str]:
+    """Check if an asset's warranty/AMC coverage agreement expires during scheduled work order execution."""
+    if not getattr(work_order, "asset_id", None) or not work_order.planned_start or not work_order.planned_end:
+        return False, ""
+
+    from zoneinfo import ZoneInfo
+    try:
+        zone = ZoneInfo(work_order.site.timezone or "UTC")
+    except Exception:
+        zone = ZoneInfo("UTC")
+
+    start_date = work_order.planned_start.astimezone(zone).date()
+    end_date = work_order.planned_end.astimezone(zone).date()
+
+    res = evaluate(work_order.organization, work_order.asset, on=start_date, work_type=work_order.work_type)
+    if res.eligible and res.best:
+        ag = res.best.agreement
+        if start_date <= ag.end_date < end_date:
+            return True, f"{ag.get_kind_display()} {ag.reference} expires on {ag.end_date}, before scheduled completion on {end_date}."
+    return False, ""
+

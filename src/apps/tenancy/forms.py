@@ -1,26 +1,187 @@
+import re
+import zoneinfo
+
 from django import forms
 
 from apps.rbac.models import Role
+from apps.sites.geo_data import COUNTRIES, TIMEZONES
 from apps.ui.forms import BootstrapFormMixin
 
 
-class OrganizationForm(forms.Form):
-    name = forms.CharField(max_length=150)
-    legal_name = forms.CharField(max_length=200, required=False)
-    timezone = forms.CharField(max_length=64)
-    country = forms.CharField(max_length=2, required=False, help_text="ISO country code, e.g. IN")
-    contact_email = forms.EmailField(required=False)
-    contact_phone = forms.CharField(max_length=32, required=False)
-    address = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), required=False)
+class TimezoneChoiceField(forms.ChoiceField):
+    """Dropdown selection for Operating Timezone populated with standard IANA options."""
+    def __init__(self, *args, **kwargs):
+        choices = [("", "Select Operating Timezone...")] + list(TIMEZONES)
+        kwargs.setdefault("choices", choices)
+        kwargs.setdefault("label", "Operating Timezone")
+        widget = kwargs.get("widget") or forms.Select(attrs={"class": "form-select", "id": "id_timezone"})
+        kwargs["widget"] = widget
+        super().__init__(*args, **kwargs)
+
+    def validate(self, value):
+        if value:
+            try:
+                zoneinfo.ZoneInfo(value)
+            except Exception:
+                raise forms.ValidationError(f"Unknown timezone '{value}'. Please select a valid IANA timezone.")
+        elif self.required:
+            raise forms.ValidationError("Operating timezone is required.")
+
+
+class CountryChoiceField(forms.ChoiceField):
+    """Dropdown selection for Country Code populated with standard ISO country options."""
+    def __init__(self, *args, **kwargs):
+        choices = [("", "Select Country Code...")] + list(COUNTRIES)
+        kwargs.setdefault("choices", choices)
+        kwargs.setdefault("label", "Country Code")
+        widget = kwargs.get("widget") or forms.Select(attrs={"class": "form-select", "id": "id_country"})
+        kwargs["widget"] = widget
+        super().__init__(*args, **kwargs)
+
+    def validate(self, value):
+        if value:
+            code = value.strip().upper()
+            if len(code) != 2 or not code.isalpha():
+                raise forms.ValidationError("Country must be a valid 2-letter ISO code.")
+        elif self.required:
+            raise forms.ValidationError("Country code is required.")
+
+class OrganizationForm(BootstrapFormMixin, forms.Form):
+    name = forms.CharField(
+        max_length=150,
+        label="Organization Name",
+        widget=forms.TextInput(attrs={
+            "placeholder": "e.g. Apex Industrial Solutions",
+            "required": "required",
+            "autocomplete": "organization",
+        }),
+        help_text="Primary public and operational display name."
+    )
+    legal_name = forms.CharField(
+        max_length=200,
+        required=False,
+        label="Legal Entity Name",
+        widget=forms.TextInput(attrs={
+            "placeholder": "e.g. Apex Industrial Pvt Ltd",
+        }),
+        help_text="Official registered name for invoices, tax, and compliance exports."
+    )
+    timezone = TimezoneChoiceField(
+        required=True,
+        help_text="Standard IANA timezone for operational scheduling, audits, and SLA tracking."
+    )
+    country = CountryChoiceField(
+        required=False,
+        help_text="Standard ISO 3166-1 alpha-2 country code."
+    )
+    contact_email = forms.EmailField(
+        required=False,
+        label="Contact Email",
+        widget=forms.EmailInput(attrs={
+            "placeholder": "e.g. operations@apexindustrial.example.com",
+            "autocomplete": "email",
+        }),
+        help_text="Main address for operational alerts and incident escalations."
+    )
+    contact_phone = forms.CharField(
+        max_length=32,
+        required=False,
+        label="Contact Phone",
+        widget=forms.TextInput(attrs={
+            "placeholder": "e.g. +91 93470 51771 or +1 (555) 019-2834",
+            "autocomplete": "tel",
+        }),
+        help_text="Primary operational contact number with country code."
+    )
+    address = forms.CharField(
+        widget=forms.Textarea(attrs={
+            "rows": 3,
+            "placeholder": "Building, street address, city, state, postal code...",
+        }),
+        required=False,
+        label="Physical / Registered Address",
+        help_text="Headquarters or primary operations facility location."
+    )
+
+    def clean_name(self):
+        name = self.cleaned_data.get("name", "").strip()
+        if len(name) < 2:
+            raise forms.ValidationError("Organization name must be at least 2 characters long.")
+        return name
+
+    def clean_timezone(self):
+        tz = self.cleaned_data.get("timezone", "").strip()
+        if not tz:
+            raise forms.ValidationError("Timezone is required.")
+        try:
+            zoneinfo.ZoneInfo(tz)
+        except Exception:
+            raise forms.ValidationError(f"Unknown timezone '{tz}'. Please select a valid IANA timezone (e.g. UTC, Asia/Kolkata, America/New_York).")
+        return tz
+
+    def clean_country(self):
+        c = self.cleaned_data.get("country", "").strip().upper()
+        if c and (len(c) != 2 or not c.isalpha()):
+            raise forms.ValidationError("Country must be a valid 2-letter ISO code (e.g. IN, US, GB).")
+        return c
+
+    def clean_contact_phone(self):
+        phone = self.cleaned_data.get("contact_phone", "").strip()
+        if phone:
+            digits = re.sub(r"\D", "", phone)
+            if len(digits) < 5:
+                raise forms.ValidationError("Please enter a valid phone number with at least 5 digits.")
+        return phone
+
+
+WORKFLOW_ROLES: tuple[tuple[str, str], ...] = (
+    ("admin", "Owner/Superadmin"),
+    ("asset_manager", "Asset Manager"),
+    ("maintenance_planner", "Maintenance Planner"),
+    ("service_dispatcher", "Service Dispatcher"),
+    ("technician", "Field Technician"),
+    ("supervisor", "Supervisor"),
+    ("stores_manager", "Stores / Inventory"),
+    ("service_manager", "Service Manager"),
+    ("client_requester", "Client / Requester"),
+    ("auditor", "Auditor / Compliance"),
+)
+WORKFLOW_ROLE_LABELS = dict(WORKFLOW_ROLES)
+WORKFLOW_ROLE_ORDER = {key: idx for idx, (key, _) in enumerate(WORKFLOW_ROLES)}
+
+
+class _WorkflowRoleMultipleChoiceField(forms.ModelMultipleChoiceField):
+    def label_from_instance(self, obj):
+        key = (getattr(obj, "system_key", "") or "").strip().lower()
+        name = (getattr(obj, "name", "") or "").strip().lower()
+        if key in ("admin", "super_admin", "superadmin") or name in (
+            "super admin", "superadmin", "owner/superadmin", "owner/super admin", "owner / super admin"
+        ):
+            return "Owner/Superadmin"
+        return WORKFLOW_ROLE_LABELS.get(obj.system_key, obj.name)
 
 
 def _role_field(org, membership=None):
+    from django.db.models import Case, IntegerField, When
+
     from apps.rbac import services as rbac
 
-    qs = Role.objects.for_organization(org).order_by("name")
+    if org and getattr(org, "pk", None):
+        try:
+            Role.objects.filter(organization=org, system_key="admin").update(name="Owner/Superadmin")
+        except Exception:
+            pass
+
+    order_whens = [When(system_key=key, then=idx) for key, idx in WORKFLOW_ROLE_ORDER.items()]
+    qs = (
+        Role.objects.for_organization(org)
+        .filter(system_key__in=WORKFLOW_ROLE_LABELS)
+        .annotate(_workflow_order=Case(*order_whens, default=99, output_field=IntegerField()))
+        .order_by("_workflow_order", "name")
+    )
     if membership is not None:
         if not rbac.has_role_assignment_permission(membership):
-            return forms.ModelMultipleChoiceField(
+            return _WorkflowRoleMultipleChoiceField(
                 queryset=Role.objects.none(),
                 widget=forms.CheckboxSelectMultiple, label="Roles",
             )
@@ -35,51 +196,204 @@ def _role_field(org, membership=None):
                     if set(r.role_permissions.values_list("permission__code", flat=True)).issubset(actor_perms)
                 ]
                 qs = qs.filter(pk__in=allowed_ids)
-    return forms.ModelMultipleChoiceField(
+    return _WorkflowRoleMultipleChoiceField(
         queryset=qs,
         widget=forms.CheckboxSelectMultiple, label="Roles",
     )
 
 
-def _site_field(org, membership=None, *, required=False):
+def _site_field(org, membership=None, *, required=True):
     from apps.rbac import services as rbac
     from apps.sites.models import Site
 
     qs = Site.objects.for_organization(org).order_by("code")
+    has_sites = False
+    try:
+        has_sites = qs.exists()
+    except Exception:
+        pass
+
     if membership is not None:
         if not rbac.has_role_assignment_permission(membership):
             return forms.ModelMultipleChoiceField(
                 queryset=Site.objects.none(), required=True,
                 widget=forms.CheckboxSelectMultiple, label="Limit to sites",
+                error_messages={"required": "Please select at least one site."},
             )
         scope = rbac.authorized_sites_for_actor(membership)
         if not scope.all_sites:
             qs = qs.filter(pk__in=scope.site_ids)
             required = True
+    help_text = (
+        "Select at least one site to assign to the user."
+        if has_sites
+        else "No sites created yet. At least one site must be created before adding users."
+    )
     return forms.ModelMultipleChoiceField(
         queryset=qs, required=required,
         widget=forms.CheckboxSelectMultiple, label="Limit to sites",
-        help_text="Leave empty for organization-wide access. Selected sites limit the chosen roles to those sites.",
+        help_text=help_text,
+        error_messages={"required": "Please select at least one site."},
     )
 
 
-class InviteForm(forms.Form):
-    email = forms.EmailField()
-    full_name = forms.CharField(max_length=150, required=False, help_text="Required for new accounts.")
+def _is_real_org(org):
+    import uuid
+    if not org:
+        return False
+    pk = getattr(org, "pk", None)
+    if isinstance(pk, uuid.UUID):
+        return True
+    if isinstance(pk, str):
+        try:
+            uuid.UUID(pk)
+            return True
+        except (ValueError, AttributeError):
+            return False
+    return False
+
+
+class InviteForm(BootstrapFormMixin, forms.Form):
+    email = forms.EmailField(
+        label="Email",
+        widget=forms.EmailInput(attrs={
+            "placeholder": "e.g. user@gmail.com",
+            "required": "required",
+            "autocomplete": "email",
+            "pattern": r"^[a-zA-Z0-9][a-zA-Z0-9._%+-]*@[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9-]*)*\.[a-zA-Z]{2,}$",
+            "title": "Enter a valid email address with a valid domain (e.g. user@gmail.com). Domain names must start with a letter and have a valid extension (e.g. .com).",
+        }),
+    )
+    full_name = forms.CharField(
+        max_length=150,
+        min_length=2,
+        required=True,
+        label="Full name",
+        widget=forms.TextInput(attrs={
+            "placeholder": "e.g. Jane Doe",
+            "required": "required",
+            "minlength": "2",
+            "pattern": r"^[A-Za-z\s'-]+$",
+            "title": "Full name must contain only alphabetical characters.",
+            "autocomplete": "name",
+        }),
+        help_text="Required for new accounts."
+    )
+    password = forms.CharField(
+        max_length=128,
+        min_length=8,
+        required=True,
+        initial="FieldOps@2026!",
+        label="Password",
+        widget=forms.PasswordInput(render_value=True, attrs={
+            "placeholder": "FieldOps@2026!",
+            "autocomplete": "new-password",
+            "minlength": "8",
+        }),
+        help_text="Initial password for login (default: FieldOps@2026!). Leave blank to send an invitation email instead."
+    )
 
     def __init__(self, *args, org, membership=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.org = org
+        self.membership = membership
         self.fields["roles"] = _role_field(org, membership=membership)
-        self.fields["sites"] = _site_field(org, membership=membership)
+        self.fields["sites"] = _site_field(org, membership=membership, required=True)
+        self.has_sites = False
+        if org and getattr(org, "pk", None):
+            try:
+                from apps.sites.models import Site
+                self.has_sites = Site.objects.for_organization(org).exists()
+            except Exception:
+                pass
+
+    def clean_email(self):
+        from apps.ui.forms import validate_strict_email
+        email = validate_strict_email(self.cleaned_data.get("email"))
+        if self.org and getattr(self.org, "pk", None):
+            try:
+                from apps.accounts.models import User
+                from apps.tenancy.selectors import is_organization_member
+                user = User.objects.filter(email__iexact=email).first()
+                if user and is_organization_member(user, self.org):
+                    raise forms.ValidationError(
+                        f"A member with email '{email}' already exists in this organization."
+                    )
+            except forms.ValidationError:
+                raise
+            except Exception:
+                pass
+        return email
+
+    def clean_full_name(self):
+        from apps.ui.forms import validate_alphabetical_name
+        return validate_alphabetical_name(self.cleaned_data.get("full_name"), field_label="Full name")
+
+    def clean_password(self):
+        pwd = (self.cleaned_data.get("password") or "").strip()
+        if not pwd:
+            if self.fields["password"].required:
+                raise forms.ValidationError("Password is required.")
+            return ""
+        if len(pwd) < 8:
+            raise forms.ValidationError("Password must be at least 8 characters.")
+        return pwd
+
+    def clean_roles(self):
+        roles = self.cleaned_data.get("roles")
+        if not roles:
+            raise forms.ValidationError("Please select at least one role.")
+        return roles
+
+    def clean_sites(self):
+        sites = self.cleaned_data.get("sites")
+        if not sites:
+            raise forms.ValidationError("Please select at least one site.")
+        return sites
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if self.org and _is_real_org(self.org):
+            from apps.sites.models import Site
+            if not Site.objects.for_organization(self.org).exists():
+                msg = "At least one site must be created before users can be created. Please create a site first."
+                self.add_error("sites", msg)
+                raise forms.ValidationError(msg)
+        if "sites" not in self.errors and not cleaned_data.get("sites"):
+            self.add_error("sites", "Please select at least one site.")
+        return cleaned_data
 
 
 class MemberEditForm(forms.Form):
-    full_name = forms.CharField(max_length=150)
+    full_name = forms.CharField(
+        max_length=150,
+        min_length=2,
+        required=True,
+        widget=forms.TextInput(attrs={
+            "pattern": r"^[A-Za-z\s'-]+$",
+            "title": "Full name must contain only alphabetical characters."
+        })
+    )
     job_title = forms.CharField(max_length=100, required=False)
+
+    def clean_full_name(self):
+        from apps.ui.forms import validate_alphabetical_name
+        return validate_alphabetical_name(self.cleaned_data.get("full_name"), field_label="Full name")
+
+
+class _RoleModelChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        key = (getattr(obj, "system_key", "") or "").strip().lower()
+        name = (getattr(obj, "name", "") or "").strip().lower()
+        if key in ("admin", "super_admin", "superadmin") or name in (
+            "super admin", "superadmin", "owner/superadmin", "owner/super admin", "owner / super admin"
+        ):
+            return "Owner/Superadmin"
+        return WORKFLOW_ROLE_LABELS.get(obj.system_key, obj.name)
 
 
 class RoleAssignmentForm(BootstrapFormMixin, forms.Form):
-    role = forms.ModelChoiceField(queryset=Role.objects.none())
+    role = _RoleModelChoiceField(queryset=Role.objects.none())
     site = forms.ModelChoiceField(queryset=None, required=False, empty_label="All sites (organization-wide)")
 
     def __init__(self, *args, org, membership=None, **kwargs):
@@ -89,7 +403,8 @@ class RoleAssignmentForm(BootstrapFormMixin, forms.Form):
         self.org = org
         self.membership = membership
 
-        roles_qs = Role.objects.for_organization(org).order_by("name")
+        from apps.rbac.role_templates import PRIMARY_ROLE_KEYS
+        roles_qs = Role.objects.for_organization(org).filter(system_key__in=PRIMARY_ROLE_KEYS).order_by("name")
         sites_qs = Site.objects.for_organization(org).order_by("code")
 
         if membership is not None:
@@ -171,3 +486,102 @@ class RoleAssignmentForm(BootstrapFormMixin, forms.Form):
 class RoleForm(forms.Form):
     name = forms.CharField(max_length=80)
     description = forms.CharField(max_length=300, required=False)
+
+class PlatformOrganizationCreateForm(BootstrapFormMixin, forms.Form):
+    name = forms.CharField(
+        max_length=150,
+        label="Organization Name",
+        widget=forms.TextInput(attrs={
+            "placeholder": "e.g. Apex Industrial Solutions",
+            "required": "required",
+            "autocomplete": "organization",
+        }),
+        help_text="Primary public and operational display name."
+    )
+    slug = forms.CharField(
+        max_length=60,
+        required=True,
+        label="URL Slug",
+        error_messages={
+            "required": "URL Slug is required.",
+        },
+        widget=forms.TextInput(attrs={
+            "placeholder": "e.g. apex-industrial",
+            "required": "required",
+        }),
+        help_text="Unique URL identifier for the organization (lowercase letters, numbers, and hyphens)."
+    )
+    owner_name = forms.CharField(
+        max_length=150,
+        label="Initial Owner Full Name",
+        widget=forms.TextInput(attrs={
+            "placeholder": "e.g. Alex Morgan",
+            "required": "required",
+            "autocomplete": "name",
+        }),
+        help_text="Name of the initial Organization Owner / Super Admin."
+    )
+    owner_email = forms.EmailField(
+        label="Initial Owner Email",
+        widget=forms.EmailInput(attrs={
+            "placeholder": "e.g. owner@apexindustrial.example.com",
+            "required": "required",
+            "autocomplete": "email",
+        }),
+        help_text="The owner email address used for logging in."
+    )
+    owner_password = forms.CharField(
+        max_length=128,
+        required=False,
+        initial="FieldOps@2026!",
+        label="Initial Owner Password",
+        widget=forms.PasswordInput(render_value=True, attrs={
+            "placeholder": "FieldOps@2026!",
+            "autocomplete": "new-password",
+        }),
+        help_text="Initial password for owner login (default: FieldOps@2026!). The owner can change this in their dashboard."
+    )
+    timezone = TimezoneChoiceField(
+        initial="UTC",
+        required=True,
+        help_text="Standard IANA timezone for tenant operations and SLA calculations."
+    )
+    country = CountryChoiceField(
+        required=False,
+        help_text="Standard ISO 3166-1 alpha-2 country code."
+    )
+
+    def clean_name(self):
+        name = self.cleaned_data.get("name", "").strip()
+        if len(name) < 2:
+            raise forms.ValidationError("Organization name must be at least 2 characters long.")
+        return name
+
+    def clean_slug(self):
+        slug = self.cleaned_data.get("slug", "").strip().lower()
+        if not slug:
+            return ""
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,58}[a-z0-9]", slug):
+            raise forms.ValidationError("Slug must be 3-60 characters: lowercase letters, numbers, and hyphens.")
+        return slug
+
+    def clean_timezone(self):
+        tz = self.cleaned_data.get("timezone", "").strip() or "UTC"
+        try:
+            zoneinfo.ZoneInfo(tz)
+        except Exception:
+            raise forms.ValidationError(f"Unknown timezone '{tz}'. Please enter a valid IANA timezone.")
+        return tz
+
+    def clean_country(self):
+        return (self.cleaned_data.get("country", "") or "").strip().upper()[:2]
+
+
+
+class PlatformOrganizationFilterForm(forms.Form):
+    """Validates platform organizations search and status filter."""
+    q = forms.CharField(max_length=150, required=False)
+    status = forms.ChoiceField(
+        choices=[("", "All Statuses"), ("ACTIVE", "Active"), ("SUSPENDED", "Inactive / Suspended")],
+        required=False,
+    )
