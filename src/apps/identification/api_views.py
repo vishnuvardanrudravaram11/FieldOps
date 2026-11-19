@@ -5,8 +5,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.assets import selectors as asset_selectors
+from apps.core.api import StandardPagination
 from apps.core.apiutils import ID_PARAM, paginate, query_param, require_permission
-from apps.core.exceptions import ValidationFailed
+from apps.core.exceptions import NotFound, ValidationFailed
+from apps.core.throttling import TokenResolveRateThrottle
 from apps.tenancy.api import TenantAPIMixin
 
 from . import selectors, services
@@ -55,6 +57,7 @@ class ScanEventSerializer(serializers.ModelSerializer):
 
 @extend_schema(parameters=[ID_PARAM])
 class IdentifierViewSet(TenantAPIMixin, viewsets.ViewSet):
+    pagination_class = StandardPagination
     permission_map = {
         "list": "asset.view",
         "retrieve": "asset.view",
@@ -76,7 +79,7 @@ class IdentifierViewSet(TenantAPIMixin, viewsets.ViewSet):
             query_param("kind", "QR or BARCODE"),
             query_param("active", "true/false"),
         ],
-        responses=IdentifierSerializer(many=True),
+        responses=IdentifierSerializer,
     )
     def list(self, request):
         import uuid
@@ -132,10 +135,13 @@ class IdentifierViewSet(TenantAPIMixin, viewsets.ViewSet):
         return Response(IdentifierSerializer(ident).data)
 
     @extend_schema(
-        parameters=[query_param("token", "label token string")],
+        parameters=[
+            query_param("token", "label token string"),
+            query_param("work_order", "optional work order UUID to verify asset match"),
+        ],
         responses={200: OpenApiTypes.OBJECT},
     )
-    @action(detail=False, methods=["get"])
+    @action(detail=False, methods=["get"], throttle_classes=[TokenResolveRateThrottle])
     def resolve(self, request):
         token = request.query_params.get("token", "")
         if not token:
@@ -143,6 +149,38 @@ class IdentifierViewSet(TenantAPIMixin, viewsets.ViewSet):
         ident, asset, is_active = services.resolve_token(
             request.membership, token, actor=request.user, request=request
         )
+        if not is_active:
+            raise NotFound("Label has been revoked or replaced.", code="label_revoked")
+
+        work_order_id = request.query_params.get("work_order")
+        matching_job = None
+        if work_order_id:
+            from apps.workorders.models import WorkOrder
+            wo = WorkOrder.objects.filter(organization=request.organization, pk=work_order_id).first()
+            if wo:
+                matches = (wo.asset_id == asset.pk)
+                matching_job = {
+                    "work_order_id": str(wo.pk),
+                    "order_number": wo.order_number,
+                    "matches_asset": matches,
+                    "target_asset_id": str(wo.asset_id) if wo.asset_id else None,
+                }
+        else:
+            from apps.workorders.models import WorkOrder
+            my_wo = WorkOrder.objects.filter(
+                organization=request.organization,
+                asset=asset,
+                assigned_to=request.membership,
+                status__in=[WorkOrder.Status.IN_PROGRESS, WorkOrder.Status.DISPATCHED, WorkOrder.Status.PLANNED],
+            ).order_by("-started_at", "-created_at").first()
+            if my_wo:
+                matching_job = {
+                    "work_order_id": str(my_wo.pk),
+                    "order_number": my_wo.order_number,
+                    "status": my_wo.status,
+                    "matches_asset": True,
+                }
+
         return Response(
             {
                 "identifier": IdentifierSerializer(ident).data,
@@ -152,5 +190,6 @@ class IdentifierViewSet(TenantAPIMixin, viewsets.ViewSet):
                 "is_active": is_active,
                 "site_code": asset.site.code,
                 "zone_name": asset.zone.name if asset.zone else None,
+                "matching_job": matching_job,
             }
         )

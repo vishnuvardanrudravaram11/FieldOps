@@ -1,17 +1,15 @@
 from rest_framework import serializers
+
 from apps.assets.models import (
-    AssetCategory,
     Asset,
+    AssetCategory,
     AssetComponent,
+    AssetDocument,
     AssetMeter,
     AssetMeterReading,
-    AssetStatusHistory,
-    AssetDocument,
     AssetStatus,
-    AssetCriticality,
+    AssetStatusHistory,
 )
-from apps.sites.models import Site, Zone
-from apps.tenancy.models import Organization
 
 
 class AssetCategorySerializer(serializers.ModelSerializer):
@@ -123,7 +121,7 @@ class AssetListSerializer(serializers.ModelSerializer):
     """Compact serializer for table grids and list views."""
     category_name = serializers.CharField(source="category.name", read_only=True)
     site_name = serializers.CharField(source="site.name", read_only=True)
-    zone_name = serializers.CharField(source="zone.name", read_only=True, default="")
+    zone_name = serializers.CharField(source="zone.name", read_only=True, default="", allow_null=True)
     parent_asset_code = serializers.CharField(source="parent_asset.asset_id", read_only=True, default="")
     child_count = serializers.IntegerField(source="child_assets.count", read_only=True)
     components_count = serializers.IntegerField(source="components.count", read_only=True)
@@ -165,7 +163,7 @@ class AssetHierarchyNodeSerializer(serializers.ModelSerializer):
     """
     category_name = serializers.CharField(source="category.name", read_only=True)
     site_name = serializers.CharField(source="site.name", read_only=True)
-    zone_name = serializers.CharField(source="zone.name", read_only=True, default="")
+    zone_name = serializers.CharField(source="zone.name", read_only=True, default="", allow_null=True)
     components = AssetComponentSerializer(many=True, read_only=True)
     children = serializers.SerializerMethodField()
 
@@ -196,7 +194,7 @@ class AssetDetailSerializer(serializers.ModelSerializer):
     """Full detail view for single asset profile."""
     category_name = serializers.CharField(source="category.name", read_only=True)
     site_name = serializers.CharField(source="site.name", read_only=True)
-    zone_name = serializers.CharField(source="zone.name", read_only=True, default="")
+    zone_name = serializers.CharField(source="zone.name", read_only=True, default="", allow_null=True)
     parent_asset_code = serializers.CharField(source="parent_asset.asset_id", read_only=True, default="")
     components = AssetComponentSerializer(many=True, read_only=True)
     meters = AssetMeterSerializer(many=True, read_only=True)

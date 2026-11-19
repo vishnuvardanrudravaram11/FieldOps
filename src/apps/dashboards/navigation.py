@@ -2,7 +2,7 @@ from apps.ui.navigation import NavItem, register
 
 register(
     NavItem(
-        label="Dashboards",
+        label="Analytics Hub",
         url_name="dashboards:hub",
         permission="report.view",
         icon="grid",
@@ -14,9 +14,21 @@ register(
 
 register(
     NavItem(
+        label="KPI Snapshots",
+        url_name="dashboards:snapshot_list",
+        permission="report.view",
+        icon="archive",
+        section="Analytics",
+        order=15,
+        match_prefix="/app/dashboards/snapshots",
+    )
+)
+
+register(
+    NavItem(
         label="My Work Cockpit",
         url_name="dashboards:my_work",
-        permission="work_order.view",  # Available to staff with work order permissions
+        permission="work_order.view_assigned",
         icon="activity",
         section="Operations",
         order=25,

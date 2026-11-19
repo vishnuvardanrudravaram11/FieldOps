@@ -9,14 +9,11 @@ from django.views import View
 
 from apps.core.exceptions import DomainError
 from apps.rbac import services as rbac
-from apps.tenancy.models import Membership
 from apps.ui.mixins import TenantPermissionMixin
 from apps.ui.pagination import paginate_dashboard_queryset
 from apps.workorders.models import WorkOrder
 
 from . import selectors, services
-from .forms import ShiftForm, TechnicianProfileForm
-from .models import TechnicianProfile
 
 
 def _get_job(request, pk):
@@ -565,6 +562,11 @@ class JobReportDefectView(TenantPermissionMixin, View):
 # ==============================================================================
 # Technician Profiles & Shifts Views (PRD Section 4.2, D-054)
 # ==============================================================================
+
+from apps.tenancy.models import Membership
+
+from .forms import ShiftForm, TechnicianProfileForm
+from .models import TechnicianProfile
 
 
 class ShiftListView(TenantPermissionMixin, View):

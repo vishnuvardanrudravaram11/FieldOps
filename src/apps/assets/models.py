@@ -1,9 +1,11 @@
 import uuid
+
 from django.conf import settings
 from django.db import models
 from django.db.models.functions import Lower
 
 from apps.core.models import TenantOwnedModel
+
 from .workflow import ACTIVE, STATES
 
 
@@ -152,11 +154,12 @@ class AssetLocationHistory(_AppendOnly, TenantOwnedModel):
 
 class AssetDocument(TenantOwnedModel):
     class DocType(models.TextChoices):
+        PHOTO = "PHOTO", "Photograph"
+        PDF = "PDF", "PDF"
         MANUAL = "MANUAL", "Manual"
         DATASHEET = "DATASHEET", "Datasheet / specification"
         CERTIFICATE = "CERTIFICATE", "Certificate"
         COMMISSIONING = "COMMISSIONING", "Commissioning record"
-        PHOTO = "PHOTO", "Photograph"
         OTHER = "OTHER", "Other"
 
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name="documents")
