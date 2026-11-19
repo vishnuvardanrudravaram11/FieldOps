@@ -15,6 +15,7 @@ Negative tests:
 """
 import pytest
 from django.db import IntegrityError
+
 from apps.core.exceptions import Conflict, InvalidTransition
 from apps.incidents import services as incident_services
 from apps.incidents.models import ServiceRequest

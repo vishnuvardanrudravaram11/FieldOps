@@ -8,14 +8,10 @@ import json
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
+from django.db.models import Count, Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.views import View
-
-def htmx_success(trigger_data: dict) -> HttpResponse:
-    response = HttpResponse(status=204)
-    response["HX-Trigger"] = json.dumps(trigger_data)
-    return response
 
 from apps.core.exceptions import DomainError, NotFound
 from apps.rbac import services as rbac
@@ -25,6 +21,12 @@ from apps.ui.mixins import TenantPermissionMixin
 from . import selectors, services
 from .forms import CalendarForm, ContactForm, HolidayForm, SiteForm, ZoneForm
 from .models import CalendarHoliday
+
+
+def htmx_success(trigger_data: dict) -> HttpResponse:
+    response = HttpResponse(status=204)
+    response["HX-Trigger"] = json.dumps(trigger_data)
+    return response
 
 TABS = [("overview", "Overview"), ("locations", "Locations"), ("calendars", "Calendars"),
         ("contacts", "Contacts"), ("assets", "Assets")]
@@ -63,11 +65,27 @@ class SiteListView(SiteBase):
     required_permission = "site.view"
 
     def get(self, request):
+        is_table_htmx = (
+            request.headers.get("HX-Request") == "true"
+            and request.headers.get("HX-Target") == "site-list-card"
+        )
+        if is_table_htmx:
+            kpis = {"total_sites": 0, "active_sites": 0, "inactive_sites": 0}
+        else:
+            base_sites = selectors.sites_for(request.membership, request.organization)
+            kpis = base_sites.aggregate(
+                total_sites=Count("pk"),
+                active_sites=Count("pk", filter=Q(status="ACTIVE")),
+                inactive_sites=Count("pk", filter=Q(status="INACTIVE")),
+            )
         qs = selectors.site_list(request.membership, request.organization, request.GET)
         page = Paginator(qs, 20).get_page(request.GET.get("page"))
         return render(request, "sites/list.html", {
-            "page": page, "q": request.GET.get("q", ""), "status": request.GET.get("status", ""),
-            "can_create": rbac.has_permission(request.membership, "site.create")})
+            "page": page, "q": request.GET.get("q", ""), "status": request.GET.get("status", ""), "ordering": request.GET.get("ordering", "-created_at"),
+            "can_create": rbac.has_permission(request.membership, "site.create"),
+            "total_sites": kpis["total_sites"],
+            "active_sites": kpis["active_sites"],
+            "inactive_sites": kpis["inactive_sites"]})
 
 
 class SiteCreateView(SiteBase):
@@ -76,9 +94,9 @@ class SiteCreateView(SiteBase):
     def get(self, request):
         initial = {
             "timezone": request.organization.timezone,
-            "country": getattr(request.organization, "country", "IN") or "IN",
+            "country": "",
         }
-        form = SiteForm(initial=initial)
+        form = SiteForm(initial=initial, org=request.organization)
         if request.headers.get("HX-Request"):
             return render(request, "sites/_site_modal.html", {
                 "title": "New site", "form": form, "submit": "Create site",
@@ -89,7 +107,7 @@ class SiteCreateView(SiteBase):
                          submit="Create site")
 
     def post(self, request):
-        form = SiteForm(request.POST)
+        form = SiteForm(request.POST, org=request.organization)
         if form.is_valid():
             try:
                 site = services.create_site(request.organization, actor=request.user, request=request,
@@ -99,11 +117,14 @@ class SiteCreateView(SiteBase):
                     form.add_error("code", exc.message)
                 else:
                     form.add_error(None, exc.message)
+            except Exception as exc:
+                form.add_error(None, str(exc))
             else:
                 messages.success(request, f"Site {site.code} created.")
                 if request.headers.get("HX-Request"):
                     return htmx_success({"closeSiteModal": True, "siteSaved": True})
                 return redirect("sites:detail", pk=site.pk)
+
         if request.headers.get("HX-Request"):
             return render(request, "sites/_site_modal.html", {
                 "title": "New site", "form": form, "submit": "Create site",
@@ -113,13 +134,27 @@ class SiteCreateView(SiteBase):
                          crumbs=[("Sites", "/app/sites/"), ("New site", None)], submit="Create site", status=400)
 
 
+class SiteDeactivateView(SiteBase):
+    required_permission = "site.deactivate"
+
+    def post(self, request, pk):
+        site = self.site(request, pk, "site.deactivate")
+        reason = (request.POST.get("reason") or "").strip() or "Deactivated via operations"
+        try:
+            services.deactivate_site(site, reason=reason, actor=request.user, request=request)
+            messages.success(request, f"Site {site.code} deactivated.")
+        except DomainError as exc:
+            messages.error(request, exc.message)
+        return redirect("sites:detail", pk=site.pk)
+
+
 class SiteEditView(SiteBase):
     required_permission = "site.update"
 
     def get(self, request, pk):
         site = self.site(request, pk, "site.update")
         initial = {f: getattr(site, f) for f in services.SITE_FIELDS}
-        form = SiteForm(initial=initial)
+        form = SiteForm(initial=initial, org=request.organization, instance_id=site.pk)
         if request.headers.get("HX-Request"):
             return render(request, "sites/_site_modal.html", {
                 "title": f"Edit {site.code}", "site": site, "form": form, "submit": "Save changes",
@@ -129,7 +164,7 @@ class SiteEditView(SiteBase):
 
     def post(self, request, pk):
         site = self.site(request, pk, "site.update")
-        form = SiteForm(request.POST)
+        form = SiteForm(request.POST, org=request.organization, instance_id=site.pk)
         if form.is_valid():
             try:
                 services.update_site(site, actor=request.user, request=request, **form.cleaned_data)
@@ -138,6 +173,8 @@ class SiteEditView(SiteBase):
                     form.add_error("code", exc.message)
                 else:
                     form.add_error(None, exc.message)
+            except Exception as exc:
+                form.add_error(None, str(exc))
             else:
                 messages.success(request, "Site saved.")
                 if request.headers.get("HX-Request"):
@@ -197,7 +234,8 @@ class SiteDetailView(SiteBase):
         site = self.site(request, pk, needed)
         try:
             if action == "deactivate":
-                services.deactivate_site(site, reason=request.POST.get("reason", ""), actor=request.user,
+                reason = (request.POST.get("reason") or "").strip() or "Deactivated via operations"
+                services.deactivate_site(site, reason=reason, actor=request.user,
                                          request=request)
                 messages.success(request, f"Site {site.code} deactivated.")
             else:

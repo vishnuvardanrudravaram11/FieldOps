@@ -43,19 +43,49 @@ def exception_handler(exc, context):
     if response is None:
         return None  # unhandled -> Django 500 handling + logging
 
+    def _clean_msg(detail):
+        if isinstance(detail, dict):
+            if "detail" in detail:
+                return _clean_msg(detail["detail"])
+            for v in detail.values():
+                return _clean_msg(v)
+        elif isinstance(detail, list | tuple) and detail:
+            return _clean_msg(detail[0])
+        return str(detail)
+
     if isinstance(exc, drf.ValidationError):
         code, message, details = "validation_failed", "Validation failed.", {"fields": response.data}
     elif isinstance(exc, drf.NotAuthenticated | drf.AuthenticationFailed):
-        code, message, details = "not_authenticated", str(exc.detail), {}
+        exc_code = None
+        if isinstance(exc.detail, dict):
+          exc_code = exc.detail.get("code")
+        if not exc_code:
+          exc_code = getattr(exc.detail, "code", None)
+        if exc_code == "token_not_valid":
+          code = "token_not_valid"
+          msg_str = "Token is invalid or expired."
+          if isinstance(exc.detail, dict) and "messages" in exc.detail:
+            msgs = exc.detail["messages"]
+            if isinstance(msgs, list) and msgs:
+              m0 = msgs[0]
+              if isinstance(m0, dict) and "message" in m0:
+                msg_str = str(m0["message"])
+          message, details = msg_str, {}
+        else:
+          code, message, details = (
+              "not_authenticated",
+              _clean_msg(exc.detail),
+              {},
+          )
     elif isinstance(exc, drf.PermissionDenied):
         code = getattr(exc.detail, "code", None) or getattr(exc, "default_code", "permission_denied")
-        message, details = str(exc.detail), {}
+        message, details = _clean_msg(exc.detail), {}
     elif isinstance(exc, drf.NotFound):
         code, message, details = "not_found", "Not found.", {}
     elif isinstance(exc, drf.Throttled):
         code, message, details = "throttled", "Too many requests.", {"retry_after": exc.wait}
     else:
         code = getattr(exc, "default_code", "error")
-        message, details = str(getattr(exc, "detail", exc)), {}
+        message, details = _clean_msg(getattr(exc, "detail", exc)), {}
     response.data = _envelope(code, message, details)
     return response

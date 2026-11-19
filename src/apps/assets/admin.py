@@ -1,12 +1,13 @@
 from django.contrib import admin
+
 from apps.assets.models import (
-    AssetCategory,
     Asset,
+    AssetCategory,
     AssetComponent,
+    AssetDocument,
     AssetMeter,
     AssetMeterReading,
     AssetStatusHistory,
-    AssetDocument,
 )
 
 

@@ -6,10 +6,43 @@ from .models import WorkOrder
 
 
 def get_work_order(membership, organization, pk):
+    import re
+    import uuid
+
+    from django.db.models import Q
+
+    pk_str = str(pk or "").strip()
     try:
-        wo = WorkOrder.objects.for_organization(organization).select_related(
-            "site", "assigned_to__user", "created_by").filter(pk=pk).first()
-    except (ValueError, TypeError):
+        if not pk_str or pk_str.lower() in ("latest", "default"):
+            wo = WorkOrder.objects.for_organization(organization).select_related(
+                "site", "assigned_to__user", "created_by").order_by("-created_at").first()
+        else:
+            try:
+                val = uuid.UUID(pk_str)
+                wo = WorkOrder.objects.for_organization(organization).select_related(
+                    "site", "assigned_to__user", "created_by").filter(pk=val).first()
+            except (ValueError, TypeError, AttributeError):
+                clean_str = pk_str.split("·")[0].split("- ")[0].strip()
+                wo = WorkOrder.objects.for_organization(organization).select_related(
+                    "site", "assigned_to__user", "created_by").filter(
+                    Q(order_number__iexact=pk_str) | Q(number__iexact=pk_str) |
+                    Q(order_number__iexact=clean_str) | Q(number__iexact=clean_str)
+                ).first()
+                if wo is None:
+                    # Match by numeric digits (e.g. WO-0001 or 1 matching WO-000001)
+                    num_match = re.search(r"(\d+)", clean_str)
+                    if num_match:
+                        num = int(num_match.group(1))
+                        wo = WorkOrder.objects.for_organization(organization).select_related(
+                            "site", "assigned_to__user", "created_by").filter(
+                            Q(order_number__iexact=f"WO-{num:06d}") |
+                            Q(number__iexact=f"WO-{num:06d}") |
+                            Q(order_number__iexact=f"WO-{num:04d}") |
+                            Q(number__iexact=f"WO-{num:04d}") |
+                            Q(order_number__icontains=str(num)) |
+                            Q(number__icontains=str(num))
+                        ).first()
+    except Exception:
         raise NotFound("Work order not found.")
     if wo is None:
         raise NotFound("Work order not found.")
@@ -24,10 +57,6 @@ def get_work_order(membership, organization, pk):
     if not can_view:
         raise NotFound("Work order not found.")
     return wo
-
-
-def work_orders_for(membership, organization):
-    return work_order_list(membership, organization)
 
 
 def work_order_list(membership, organization, params=None):
@@ -105,6 +134,7 @@ def evidence_for(wo):
 
 def total_hours(organization, wo):
     from django.db.models import Sum
+
     from .models import WorkOrderLabor
     res = WorkOrderLabor.objects.filter(organization=organization, work_order=wo).aggregate(total=Sum("hours"))["total"]
     return res or 0

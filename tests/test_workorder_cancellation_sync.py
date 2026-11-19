@@ -15,9 +15,11 @@ Negative tests (Phase 3):
 - An unsuccessful cancellation leaves the request unchanged through atomic rollback.
 """
 from decimal import Decimal
+
 import pytest
+
 from apps.audit.models import AuditLog
-from apps.core.exceptions import Conflict, InvalidTransition, ValidationFailed
+from apps.core.exceptions import Conflict, InvalidTransition
 from apps.incidents import services as incident_services
 from apps.incidents.models import ServiceRequest
 from apps.inventory import services as inventory_services
@@ -200,13 +202,19 @@ def test_cancel_work_order_with_outstanding_issued_parts_is_refused(org_a, site_
     WorkOrder.objects.filter(pk=wo.pk).update(status=WorkOrder.Status.PLANNED)
     wo.refresh_from_db()
 
-    # Request and issue part
+    # Request, reserve, and issue part
     line = inventory_services.request_part(
         wo,
         part=part,
         quantity=Decimal("2"),
+        actor=planner.user,
+        membership=planner,
+    )
+    inventory_services.reserve(
+        line,
+        warehouse=warehouse,
+        quantity=Decimal("2"),
         actor=stores.user,
-        membership=stores,
     )
     inventory_services.issue(
         line,

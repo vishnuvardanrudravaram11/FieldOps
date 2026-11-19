@@ -1,12 +1,16 @@
+import uuid
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.api import StandardPagination
+
 from . import selectors, services
-from .api import TenantAPIMixin
-from .models import Membership
+from .api import PlatformAPIMixin, TenantAPIMixin
+from .models import Membership, Organization
 
 ORG_FIELDS = ["name", "legal_name", "timezone", "country", "contact_email", "contact_phone", "address"]
 
@@ -41,6 +45,199 @@ class OrganizationViewSet(TenantAPIMixin, viewsets.ViewSet):
             request.organization, actor=request.user, request=request, **ser.validated_data
         )
         return Response(OrganizationSerializer(org).data)
+
+
+class PlatformOrganizationCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    slug = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    owner_name = serializers.CharField(max_length=150)
+    owner_email = serializers.EmailField()
+    owner_password = serializers.CharField(max_length=128, required=False, allow_blank=True, default="FieldOps@2026!")
+    timezone = serializers.CharField(max_length=64, required=False, default="UTC")
+    country = serializers.CharField(max_length=2, required=False, allow_blank=True)
+
+
+class PlatformOrganizationStatusSerializer(serializers.Serializer):
+    active = serializers.BooleanField(required=True, help_text="True to activate, False to suspend the organization")
+    reason = serializers.CharField(required=False, allow_blank=True, default="", help_text="Reason for the status change")
+
+
+
+def _resolve_role_ids(org, role_str, role_ids=None):
+    if role_ids:
+        return role_ids
+    if not role_str:
+        return []
+    from apps.rbac.models import Role
+    role_raw = role_str.strip().lower()
+    role_map = {
+        "super_admin": "admin",
+        "super admin": "admin",
+        "superadmin": "admin",
+        "owner/superadmin": "admin",
+        "owner/super admin": "admin",
+        "owner / super admin": "admin",
+        "owner": "admin",
+        "administrator": "admin",
+        "field_technician": "technician",
+        "field technician": "technician",
+        "stores": "stores_manager",
+        "asset manager": "asset_manager",
+        "service manager": "service_manager",
+        "maintenance planner": "maintenance_planner",
+        "compliance": "auditor",
+    }
+    role_key = role_map.get(role_raw, role_raw)
+    role = Role.objects.filter(organization=org, system_key=role_key).first()
+    if not role:
+        role = Role.objects.filter(organization=org, name__iexact=role_str).first()
+    if not role:
+        role = Role.objects.filter(organization=org, system_key="technician").first()
+    return [role.pk] if role else []
+
+
+class PlatformUserCreateSerializer(serializers.Serializer):
+    organization = serializers.UUIDField(required=False)
+    organization_id = serializers.UUIDField(required=False)
+    email = serializers.EmailField()
+    full_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    password = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    role = serializers.CharField(max_length=50, required=False, default="super_admin")
+    job_title = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+class PlatformOrganizationViewSet(PlatformAPIMixin, viewsets.ViewSet):
+    """Platform Super Admin management of all organizations (multi-tenant root)."""
+
+    def _get_org(self, pk):
+        from django.http import Http404
+        from django.shortcuts import get_object_or_404
+
+        try:
+            org_uuid = uuid.UUID(str(pk))
+        except (ValueError, TypeError) as exc:
+            raise Http404("Organization not found.") from exc
+        return get_object_or_404(Organization, pk=org_uuid)
+
+    @extend_schema(responses=OrganizationSerializer(many=True))
+    def list(self, request):
+        orgs = Organization.objects.all().order_by("name")
+        return Response(OrganizationSerializer(orgs, many=True).data)
+
+    @extend_schema(responses=OrganizationSerializer)
+    def retrieve(self, request, pk=None):
+        org = self._get_org(pk)
+        return Response(OrganizationSerializer(org).data)
+
+    @extend_schema(request=PlatformOrganizationCreateSerializer, responses=OrganizationSerializer)
+    def create(self, request):
+        ser = PlatformOrganizationCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        org, _ = services.create_organization(
+            name=data["name"],
+            slug=data.get("slug") or None,
+            owner_name=data["owner_name"],
+            owner_email=data["owner_email"],
+            owner_password=data.get("owner_password") or "FieldOps@2026!",
+            timezone_name=data.get("timezone", "UTC"),
+            country=data.get("country", ""),
+            actor=request.user,
+            request=request,
+        )
+        return Response(OrganizationSerializer(org).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses={200: serializers.DictField()})
+    def destroy(self, request, pk=None):
+        org = self._get_org(pk)
+        hard, msg = services.delete_organization(org, actor=request.user, request=request)
+        return Response({"success": True, "hard_deleted": hard, "message": msg}, status=status.HTTP_200_OK)
+
+    @extend_schema(request=PlatformOrganizationStatusSerializer, responses=OrganizationSerializer, summary="Update organization status")
+    @action(detail=True, methods=["post"])
+    def set_status(self, request, pk=None):
+        org = self._get_org(pk)
+        ser = PlatformOrganizationStatusSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        active = ser.validated_data["active"]
+        reason = ser.validated_data.get("reason", "") or ("Deactivated via platform API" if not active else "")
+        services.set_organization_status(org, active=active, actor=request.user, reason=reason, request=request)
+        return Response(OrganizationSerializer(org).data)
+
+    @extend_schema(request=PlatformUserCreateSerializer, responses={201: lambda: MemberSerializer})
+    @action(detail=True, methods=["post"], url_path="users")
+    def create_user(self, request, pk=None):
+        org = self._get_org(pk)
+        ser = PlatformUserCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        full_name = (d.get("full_name") or f"{d.get('first_name', '')} {d.get('last_name', '')}".strip())[:150]
+        role_ids = _resolve_role_ids(org, d.get("role", "super_admin"))
+        raw_password = d.get("password") or None
+        m = services.invite_member(
+            org,
+            email=d["email"],
+            full_name=full_name,
+            role_ids=role_ids,
+            actor=request.user,
+            request=request,
+            password=raw_password,
+        )
+        u = m.user
+        update_fields = []
+        if d.get("phone"):
+            u.phone = d["phone"]
+            update_fields.append("phone")
+        if d.get("role", "").lower() in ("admin", "super_admin", "owner") and not u.is_staff:
+            u.is_staff = True
+            update_fields.append("is_staff")
+        if update_fields:
+            u.save(update_fields=update_fields)
+        return Response(MemberSerializer(m).data, status=status.HTTP_201_CREATED)
+
+
+class PlatformUserViewSet(PlatformAPIMixin, viewsets.ViewSet):
+    """Platform administrator user provisioning across organizations."""
+
+    @extend_schema(request=PlatformUserCreateSerializer, responses={201: lambda: MemberSerializer})
+    def create(self, request):
+        from django.shortcuts import get_object_or_404
+        org_id = request.data.get("organization") or request.data.get("organization_id")
+        if not org_id:
+            raise serializers.ValidationError({"organization": "organization or organization_id is required."})
+        try:
+            org_uuid = uuid.UUID(str(org_id))
+        except (ValueError, TypeError) as exc:
+            raise serializers.ValidationError({"organization": "Enter a valid organization UUID."}) from exc
+        org = get_object_or_404(Organization, pk=org_uuid)
+        ser = PlatformUserCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        full_name = (d.get("full_name") or f"{d.get('first_name', '')} {d.get('last_name', '')}".strip())[:150]
+        role_ids = _resolve_role_ids(org, d.get("role", "super_admin"))
+        raw_password = d.get("password") or None
+        m = services.invite_member(
+            org,
+            email=d["email"],
+            full_name=full_name,
+            role_ids=role_ids,
+            actor=request.user,
+            request=request,
+            password=raw_password,
+        )
+        u = m.user
+        update_fields = []
+        if d.get("phone"):
+            u.phone = d["phone"]
+            update_fields.append("phone")
+        if d.get("role", "").lower() in ("admin", "super_admin", "owner") and not u.is_staff:
+            u.is_staff = True
+            update_fields.append("is_staff")
+        if update_fields:
+            u.save(update_fields=update_fields)
+        return Response(MemberSerializer(m).data, status=status.HTTP_201_CREATED)
 
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -83,21 +280,29 @@ class _AssignmentInput(serializers.Serializer):
 class InviteSerializer(_AssignmentInput):
     email = serializers.EmailField()
     full_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    password = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    role = serializers.CharField(max_length=50, required=False, allow_blank=True)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if "role_ids" not in attrs and "role_assignments" not in attrs:
-            raise serializers.ValidationError("role_ids or role_assignments is required.")
+        if "role_ids" not in attrs and "role_assignments" not in attrs and not attrs.get("role"):
+            raise serializers.ValidationError("role, role_ids or role_assignments is required.")
         return attrs
 
 
 class MemberUpdateSerializer(_AssignmentInput):
     full_name = serializers.CharField(max_length=150, required=False)
     job_title = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    role = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    is_active = serializers.BooleanField(required=False)
 
 
 @extend_schema(parameters=[OpenApiParameter("id", OpenApiTypes.UUID, OpenApiParameter.PATH)])
 class MemberViewSet(TenantAPIMixin, viewsets.ViewSet):
+    pagination_class = StandardPagination
     permission_map = {
         "list": "user.view", "retrieve": "user.view", "create": "user.invite",
         "partial_update": "user.update", "deactivate": "user.deactivate",
@@ -107,14 +312,12 @@ class MemberViewSet(TenantAPIMixin, viewsets.ViewSet):
     def _qs(self, request):
         return selectors.organization_members(request.organization)
 
-    @extend_schema(responses=MemberSerializer(many=True))
+    @extend_schema(responses=MemberSerializer)
     def list(self, request):
         qs = self._qs(request).order_by("user__full_name")
         status_f = request.query_params.get("status")
         if status_f in Membership.Status.values:
             qs = qs.filter(status=status_f)
-        from apps.core.api import StandardPagination
-
         paginator = StandardPagination()
         page = paginator.paginate_queryset(qs, request)
         return paginator.get_paginated_response(MemberSerializer(page, many=True).data)
@@ -128,9 +331,26 @@ class MemberViewSet(TenantAPIMixin, viewsets.ViewSet):
         ser = InviteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
-        m = services.invite_member(request.organization, email=d["email"], full_name=d.get("full_name", ""),
-                                   role_ids=d.get("role_ids"), site_ids=d.get("site_ids"),
-                                   assignments=d.get("role_assignments"), actor=request.user, request=request)
+        full_name = (d.get("full_name") or f"{d.get('first_name', '')} {d.get('last_name', '')}".strip())[:150]
+        role_ids = d.get("role_ids")
+        if not role_ids and not d.get("role_assignments") and d.get("role"):
+            role_ids = _resolve_role_ids(request.organization, d["role"])
+
+        m = services.invite_member(
+            request.organization,
+            email=d["email"],
+            full_name=full_name or "",
+            role_ids=role_ids,
+            site_ids=d.get("site_ids"),
+            assignments=d.get("role_assignments"),
+            actor=request.user,
+            request=request,
+            password=d.get("password") or None,
+        )
+        if d.get("phone"):
+            m.user.phone = d["phone"]
+            m.user.save(update_fields=["phone"])
+
         return Response(MemberSerializer(m).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=MemberUpdateSerializer, responses=MemberSerializer)
@@ -139,8 +359,16 @@ class MemberViewSet(TenantAPIMixin, viewsets.ViewSet):
         ser = MemberUpdateSerializer(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
+
+        if "is_active" in d:
+            services.set_member_active(m, active=bool(d["is_active"]), actor=request.user, request=request)
+
+        role_ids = d.get("role_ids")
+        if not role_ids and not d.get("role_assignments") and d.get("role"):
+            role_ids = _resolve_role_ids(request.organization, d["role"])
+
         services.update_member(m, actor=request.user, request=request, full_name=d.get("full_name"),
-                               job_title=d.get("job_title"), role_ids=d.get("role_ids"),
+                               job_title=d.get("job_title"), role_ids=role_ids,
                                site_ids=d.get("site_ids"), assignments=d.get("role_assignments"))
         return Response(MemberSerializer(services.get_membership(request.organization, pk)).data)
 

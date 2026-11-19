@@ -1,13 +1,14 @@
 from django.urls import reverse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_field
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from apps.core.api import StandardPagination
 from apps.core.apiutils import ID_PARAM, paginate, query_param, require_permission
-from apps.core.exceptions import DomainError, NotFound, ValidationFailed
+from apps.core.exceptions import DomainError, InvalidTransition, NotFound, ValidationFailed
 from apps.sites import selectors as site_selectors
 from apps.sites.models import Zone
 from apps.tenancy.api import TenantAPIMixin
@@ -39,7 +40,7 @@ class CategoryWriteSerializer(serializers.Serializer):
 class AssetSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
     site_code = serializers.CharField(source="site.code", read_only=True)
-    zone_name = serializers.CharField(source="zone.name", read_only=True, default=None)
+    zone_name = serializers.SerializerMethodField()
     owner_name = serializers.SerializerMethodField()
     parent = serializers.SerializerMethodField()
     available_actions = serializers.SerializerMethodField()
@@ -51,6 +52,10 @@ class AssetSerializer(serializers.ModelSerializer):
                   "owner", "owner_name", "warranty_ref", "attributes", "status", "parent", "available_actions", "created_at",
                   "updated_at"]
         read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_zone_name(self, obj) -> str | None:
+        return obj.zone.name if obj.zone_id else None
 
     def get_owner_name(self, obj) -> str | None:
         return obj.owner.user.display_name if obj.owner_id else None
@@ -88,12 +93,22 @@ class AssetWriteSerializer(serializers.Serializer):
     def validate(self, attrs):
         if "status" in getattr(self, "initial_data", {}):
             raise serializers.ValidationError({"status": "Status cannot be edited; use POST /assets/{id}/transition/."})
+        p = attrs.get("purchase_date")
+        if p:
+            from django.utils import timezone as _tz
+            if p > _tz.now().date():
+                raise serializers.ValidationError({"purchase_date": "Purchase date cannot be in the future."})
         return attrs
 
 
 class TransitionSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=[t.action for t in ASSET_STATUS.transitions])
     reason = serializers.CharField(max_length=500)
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and "body" in data and isinstance(data["body"], dict):
+            data = data["body"]
+        return super().to_internal_value(data)
 
 
 class StatusHistorySerializer(serializers.Serializer):
@@ -112,10 +127,10 @@ class StatusHistorySerializer(serializers.Serializer):
 
 class LocationHistorySerializer(serializers.Serializer):
     id = serializers.UUIDField()
-    from_site = serializers.CharField(source="from_site.code", default=None)
-    from_zone = serializers.CharField(source="from_zone.name", default=None)
+    from_site = serializers.CharField(source="from_site.code", default=None, allow_null=True)
+    from_zone = serializers.CharField(source="from_zone.name", default=None, allow_null=True)
     to_site = serializers.CharField(source="to_site.code")
-    to_zone = serializers.CharField(source="to_zone.name", default=None)
+    to_zone = serializers.CharField(source="to_zone.name", default=None, allow_null=True)
     reason = serializers.CharField()
     moved_by = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField()
@@ -170,7 +185,7 @@ class MeterWriteSerializer(serializers.Serializer):
 
 
 class ReadingSerializer(serializers.ModelSerializer):
-    recorded_by = serializers.EmailField(source="recorded_by.email", read_only=True, default=None)
+    recorded_by = serializers.EmailField(source="recorded_by.email", read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = AssetMeterReading
@@ -239,6 +254,16 @@ class TreeNodeSerializer(serializers.Serializer):
     children = serializers.ListField(child=serializers.DictField())
 
 
+class TreePathItemSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    asset_tag = serializers.CharField()
+
+
+class AssetTreeResponseSerializer(serializers.Serializer):
+    path = TreePathItemSerializer(many=True)
+    tree = TreeNodeSerializer()
+
+
 def tree_node(n: dict) -> dict:
     a, link = n["asset"], n["link"]
     return {"id": str(a.pk), "asset_tag": a.asset_tag, "name": a.name, "status": a.status,
@@ -248,7 +273,10 @@ def tree_node(n: dict) -> dict:
 
 
 def _validated(serializer_cls, request, partial=False):
-    ser = serializer_cls(data=request.data, partial=partial)
+    data = request.data
+    if isinstance(data, dict) and "body" in data and isinstance(data["body"], dict) and "action" not in data:
+        data = data["body"]
+    ser = serializer_cls(data=data, partial=partial)
     ser.is_valid(raise_exception=True)
     return ser.validated_data
 
@@ -283,13 +311,14 @@ def resolve_refs(request, d: dict, *, code: str) -> dict:
 
 @extend_schema(parameters=[ID_PARAM])
 class AssetCategoryViewSet(TenantAPIMixin, viewsets.ViewSet):
+    pagination_class = StandardPagination
     permission_map = {"list": "asset.view", "retrieve": "asset.view", "create": "asset.category.manage",
                       "partial_update": "asset.category.manage"}
 
     def _cat(self, request, pk):
         return site_selectors.scoped_get(selectors.categories_for(request.organization), pk, "Category")
 
-    @extend_schema(responses=CategorySerializer(many=True))
+    @extend_schema(responses=CategorySerializer)
     def list(self, request):
         return paginate(request, selectors.categories_for(request.organization), CategorySerializer)
 
@@ -317,6 +346,7 @@ class AssetCategoryViewSet(TenantAPIMixin, viewsets.ViewSet):
 
 @extend_schema(parameters=[ID_PARAM])
 class AssetViewSet(TenantAPIMixin, viewsets.ViewSet):
+    pagination_class = StandardPagination
     permission_map = {
         "list": "asset.view", "retrieve": "asset.view", "create": "asset.create", "partial_update": "asset.update",
         "transition": "asset.change_status", "history": "asset.history.view",
@@ -341,7 +371,7 @@ class AssetViewSet(TenantAPIMixin, viewsets.ViewSet):
                     query_param("status", "asset status"), query_param("owner", "owner membership id",
                     OpenApiTypes.UUID), query_param("q", "tag / name / serial / model / manufacturer"),
                     query_param("ordering", "asset_tag, name, status, created_at (prefix - to reverse)")],
-        responses=AssetSerializer(many=True))
+        responses=AssetSerializer)
     def list(self, request):
         qs = selectors.filter_assets(self._qs(request), request.query_params)
         return paginate(request, qs, AssetSerializer)
@@ -377,7 +407,21 @@ class AssetViewSet(TenantAPIMixin, viewsets.ViewSet):
         """The only way to change asset status: validated transition + history row + audit."""
         asset = self._asset(request, pk, "asset.change_status")
         d = _validated(TransitionSerializer, request)
-        services.change_status(asset, action=d["action"], reason=d["reason"], actor=request.user, request=request)
+        # DEF-003 fix: pre-validate that the action is allowed from the asset's current state
+        try:
+            ASSET_STATUS.get(asset.status, d["action"])
+        except InvalidTransition as exc:
+            return Response(
+                {"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
+                status=status.HTTP_409_CONFLICT,
+            )
+        try:
+            services.change_status(asset, action=d["action"], reason=d["reason"], actor=request.user, request=request)
+        except InvalidTransition as exc:
+            return Response(
+                {"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(AssetSerializer(self._asset(request, pk)).data)
 
     @extend_schema(responses=StatusHistorySerializer(many=True))
@@ -431,13 +475,13 @@ class AssetViewSet(TenantAPIMixin, viewsets.ViewSet):
         doc.refresh_from_db()
         return Response(DocumentSerializer(doc).data)
 
-    @extend_schema(responses=TreeNodeSerializer)
+    @extend_schema(responses=AssetTreeResponseSerializer)
     @action(detail=True, methods=["get"])
     def tree(self, request, pk=None):
         """This asset with all of its descendants, plus the chain of ancestors (root first)."""
         asset = self._asset(request, pk)
         path = [{"id": str(a.pk), "asset_tag": a.asset_tag} for a in reversed(hierarchy.ancestors(asset))]
-        return Response({"path": path, "tree": tree_node(hierarchy.build_tree(asset))})
+        return Response({"path": path, "tree": tree_node(hierarchy.build_tree(asset, annotate_health=False))})
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
     @action(detail=True, methods=["get"])
@@ -505,6 +549,7 @@ class AssetViewSet(TenantAPIMixin, viewsets.ViewSet):
 
 @extend_schema(parameters=[ID_PARAM])
 class ComponentViewSet(TenantAPIMixin, viewsets.ViewSet):
+    pagination_class = StandardPagination
     permission_map = {"list": "asset.view", "retrieve": "asset.view", "partial_update": "asset.hierarchy.manage",
                       "move": "asset.hierarchy.manage", "replace": "asset.hierarchy.manage",
                       "destroy": "asset.hierarchy.manage"}
@@ -517,7 +562,7 @@ class ComponentViewSet(TenantAPIMixin, viewsets.ViewSet):
 
     @extend_schema(parameters=[query_param("parent", "parent asset id", OpenApiTypes.UUID),
                                query_param("child", "child asset id", OpenApiTypes.UUID)],
-                   responses=ComponentSerializer(many=True))
+                   responses=ComponentSerializer)
     def list(self, request):
         import uuid
 
@@ -573,7 +618,7 @@ class ComponentViewSet(TenantAPIMixin, viewsets.ViewSet):
         # Build the same safe candidate set as the HTML view: exclude the current child's entire subtree
         # and all ancestors of the parent (to prevent cycles).
         child = link.child
-        below = {n["asset"].pk for n in hierarchy.flatten(hierarchy.build_tree(child))}
+        below = {n["asset"].pk for n in hierarchy.flatten(hierarchy.build_tree(child, annotate_health=False))}
         parent_ancestors = (
             {a.pk for a in hierarchy.ancestors(link.parent)}
             | {link.parent_id, child.pk}
@@ -608,6 +653,7 @@ class ComponentViewSet(TenantAPIMixin, viewsets.ViewSet):
 
 @extend_schema(parameters=[ID_PARAM])
 class MeterViewSet(TenantAPIMixin, viewsets.ViewSet):
+    pagination_class = StandardPagination
     permission_map = {"list": "asset.view", "retrieve": "asset.view", "create": "asset.update",
                       "activate": "asset.update", "deactivate": "asset.update",
                       "readings:get": "asset.view", "readings:post": "asset.meter.record"}
@@ -619,7 +665,7 @@ class MeterViewSet(TenantAPIMixin, viewsets.ViewSet):
         return meter
 
     @extend_schema(parameters=[query_param("asset", "asset id", OpenApiTypes.UUID)],
-                   responses=MeterSerializer(many=True))
+                   responses=MeterSerializer)
     def list(self, request):
         import uuid
 

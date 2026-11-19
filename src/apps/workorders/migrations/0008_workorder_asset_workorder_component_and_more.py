@@ -7,7 +7,7 @@ from django.db import migrations, models
 def backfill_work_order_relationships(apps, schema_editor):
     cursor = schema_editor.connection.cursor()
     cursor.execute("""
-        SELECT 1 FROM information_schema.columns 
+        SELECT 1 FROM information_schema.columns
         WHERE table_name = 'workorders_workorder' AND column_name = 'asset_reference'
     """)
     if not cursor.fetchone():

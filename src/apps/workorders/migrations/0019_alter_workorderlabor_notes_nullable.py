@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
                     DO $$
                     BEGIN
                         IF EXISTS (
-                            SELECT 1 FROM information_schema.columns 
+                            SELECT 1 FROM information_schema.columns
                             WHERE table_name = 'workorders_workorderlabor' AND column_name = 'notes'
                         ) THEN
                             ALTER TABLE workorders_workorderlabor ALTER COLUMN notes DROP NOT NULL;
