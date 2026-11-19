@@ -4,10 +4,12 @@ Idempotent and tenant-safe (runs inside tenant_context per organization).
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from decimal import Decimal
 
 from celery import shared_task
-from django.db import OperationalError
+from django.db import OperationalError, models
+from django.utils import timezone
 
 log = logging.getLogger(__name__)
 
@@ -53,11 +55,6 @@ def check_reorder_alerts_for_org(self, organization_id: str) -> dict:
                 f"{bal.effective_min}. Suggested reorder quantity: {reorder_qty} {bal.part.unit}."
             )
             # Avoid duplicate notification within a rolling 24-hour window (or if unread)
-            from datetime import timedelta
-
-            from django.db import models
-            from django.utils import timezone
-
             cutoff = timezone.now() - timedelta(hours=24)
             recent = Notification.objects.for_organization(org).filter(
                 title=title,
