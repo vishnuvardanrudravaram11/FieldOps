@@ -293,6 +293,43 @@ class SlaProfileFormTests(TestCase):
         self.assertIn("Duplicate priority target detected", error_msg)
         self.assertIn("Critical", error_msg)
 
+    def test_duplicate_escalation_rules_rejected(self):
+        """Submitting two rows with the same escalation rule step raises a clear duplicate error."""
+        sup_role = self.roles.get("supervisor") or self.roles.get("operations_manager")
+        payload = {
+            "name": "Duplicate Rule SLA",
+            "applies_to": "REQUEST",
+            "targets-TOTAL_FORMS": "1",
+            "targets-INITIAL_FORMS": "0",
+            "targets-MIN_NUM_FORMS": "0",
+            "targets-MAX_NUM_FORMS": "4",
+            "targets-0-priority": "CRITICAL",
+            "targets-0-response_minutes": "15 minutes",
+            "targets-0-resolution_minutes": "4 hours",
+            "targets-0-warning_percent": "75%",
+            "rules-TOTAL_FORMS": "2",
+            "rules-INITIAL_FORMS": "0",
+            "rules-MIN_NUM_FORMS": "0",
+            "rules-MAX_NUM_FORMS": "6",
+            "rules-0-target_kind": "RESOLUTION",
+            "rules-0-trigger": "WARNING",
+            "rules-0-level": "1",
+            "rules-0-notify_role": str(sup_role.pk) if sup_role else "",
+            "rules-0-notify_assignee": "on",
+            "rules-1-target_kind": "RESOLUTION",
+            "rules-1-trigger": "WARNING",
+            "rules-1-level": "2",
+            "rules-1-notify_role": str(sup_role.pk) if sup_role else "",
+            "rules-1-notify_assignee": "on",
+            "action": "activate",
+        }
+        response = self.client.post("/app/sla/profiles/new/", data=payload)
+        self.assertEqual(response.status_code, 400)
+        rule_formset = response.context.get("rule_formset")
+        self.assertTrue(rule_formset.non_form_errors())
+        error_msg = str(rule_formset.non_form_errors()[0])
+        self.assertIn("Duplicate escalation rule detected", error_msg)
+
     def test_duplicate_scope_conflict_message(self):
         """Creating an active profile with duplicate scope raises clear message indicating existing profile."""
         SLAProfile.objects.create(
@@ -549,7 +586,6 @@ class SlaFullWorkflowLifecycleTests(TestCase):
     def setUp(self):
         from apps.assets.models import Asset, AssetCategory
         from apps.sites.models import Site
-        from apps.sla.models import EscalationRule, SLAProfile, SLATarget
         from apps.sla import services as sla_services
 
         self.org = Organization.objects.create(name="Apex Industrial Ltd", slug="apex-sla-e2e")
@@ -560,10 +596,11 @@ class SlaFullWorkflowLifecycleTests(TestCase):
         self.owner_mem = Membership.objects.create(organization=self.org, user=self.owner, status=Membership.Status.ACTIVE)
         MembershipRole.objects.create(membership=self.owner_mem, role=self.roles["owner"])
 
-        # 2. Dispatcher / Operations Manager / Supervisor
+        # 2. Dispatcher / Service Manager / Supervisor
         self.dispatcher = User.objects.create_user(email="dispatcher@apex.test", password="Password123!", full_name="Apex Dispatcher")
         self.dispatcher_mem = Membership.objects.create(organization=self.org, user=self.dispatcher, status=Membership.Status.ACTIVE)
-        MembershipRole.objects.create(membership=self.dispatcher_mem, role=self.roles["operations_manager"])
+        MembershipRole.objects.create(membership=self.dispatcher_mem, role=self.roles["service_dispatcher"])
+        MembershipRole.objects.create(membership=self.dispatcher_mem, role=self.roles["service_manager"])
         MembershipRole.objects.create(membership=self.dispatcher_mem, role=self.roles["maintenance_planner"])
         MembershipRole.objects.create(membership=self.dispatcher_mem, role=self.roles["supervisor"])
 
@@ -624,7 +661,7 @@ class SlaFullWorkflowLifecycleTests(TestCase):
             self.wo_profile,
             target_kind="RESOLUTION",
             trigger="WARNING",
-            notify_role=self.roles["operations_manager"],
+            notify_role=self.roles.get("service_manager") or self.roles.get("supervisor"),
             notify_assignee=True,
             actor=self.owner,
         )
@@ -632,7 +669,7 @@ class SlaFullWorkflowLifecycleTests(TestCase):
             self.wo_profile,
             target_kind="RESOLUTION",
             trigger="BREACH",
-            notify_role=self.roles["operations_manager"],
+            notify_role=self.roles.get("service_manager") or self.roles.get("supervisor"),
             notify_assignee=True,
             actor=self.owner,
         )
@@ -650,13 +687,14 @@ class SlaFullWorkflowLifecycleTests(TestCase):
     def test_end_to_end_full_sla_workflow(self):
         """Execute and verify the complete end-to-end SLA workflow diagram."""
         from datetime import timedelta
+
         from django.utils import timezone
+
         from apps.audit.models import AuditLog
         from apps.incidents import services as incident_services
-        from apps.sla.models import SLAPauseEvent, SLATracking, SLAEvent
         from apps.sla import services as sla_services
+        from apps.sla.models import SLAEvent, SLAPauseEvent, SLATracking
         from apps.workorders import services as wo_services
-        from apps.workorders.models import WorkOrder
 
         now = timezone.now()
 
@@ -787,7 +825,7 @@ class SlaFullWorkflowLifecycleTests(TestCase):
 
         # Step 10: Resume Work (ON_HOLD -> IN_PROGRESS) -> Timers continue
         orig_reso_due = t_wo.resolution_due_at
-        resume_time = hold_time + timedelta(minutes=60)
+        _ = hold_time + timedelta(minutes=60)
         wo_services.resume_work_order(
             wo,
             membership=self.tech_mem,
@@ -807,6 +845,7 @@ class SlaFullWorkflowLifecycleTests(TestCase):
         wo.checklist_required = False
         wo.save(update_fields=["checklist_required"])
         from django.core.files.uploadedfile import SimpleUploadedFile
+
         from apps.files import services as file_services
         evidence_attachment = file_services.attach(
             SimpleUploadedFile("completion_evidence.txt", b"Turbine test passed, pressure nominal."),
@@ -840,6 +879,7 @@ class SlaFullWorkflowLifecycleTests(TestCase):
 
         t_wo.refresh_from_db()
         self.assertIsNotNone(t_wo.resolution_met_at, "Resolution target must be met upon completion")
+        self.assertEqual(t_wo.status, SLATracking.Status.COMPLETED)
         self.assertEqual(t_wo.resolution_state, SLATracking.TargetState.MET)
         self.assertTrue(SLAEvent.objects.filter(tracking=t_wo, event_type="RESOLUTION_MET").exists())
         self.assertTrue(AuditLog.objects.filter(action="sla.resolution_met", organization=self.org).exists())
@@ -943,12 +983,11 @@ class SlaFullWorkflowLifecycleTests(TestCase):
     def test_sla_breach_detection_escalation_and_acknowledgement(self):
         """Verify SLA breach detection, multi-tier escalation, and manager acknowledgement."""
         from datetime import timedelta
-        from django.utils import timezone
+
         from apps.audit.models import AuditLog
         from apps.incidents import services as incident_services
-        from apps.sla.models import SLABreach, SLATracking, SLAEvent
         from apps.sla import services as sla_services
-        from apps.workorders import services as wo_services
+        from apps.sla.models import SLABreach, SLAEvent, SLATracking
 
         sr = incident_services.create_request(
             self.org,
@@ -1000,11 +1039,24 @@ class SlaFullWorkflowLifecycleTests(TestCase):
         self.assertTrue(SLAEvent.objects.filter(tracking=t_wo, event_type="ACKNOWLEDGED").exists())
         self.assertTrue(AuditLog.objects.filter(action="sla.breach_acknowledged", organization=self.org).exists())
 
+        # Acknowledged breaches must not inflate Open Breaches KPI count (only remaining unacknowledged OPEN breaches count)
+        from apps.sla import selectors as sla_selectors
+        expected_open = SLABreach.objects.for_organization(self.org).filter(status=SLABreach.Status.OPEN).count()
+        self.assertEqual(expected_open, 1)
+        kpis = sla_selectors.metrics_for_trackings(sla_selectors.trackings_for(self.owner_mem, self.org), self.owner_mem, self.org)
+        self.assertEqual(kpis["breaches_open"], expected_open)
+        self.assertEqual(sla_selectors.metrics(self.owner_mem, self.org)["breaches_open"], expected_open)
+
+        # Fulfilling a previously breached target marks MET_LATE even if wall-clock now <= due
+        sla_services._meet(t_wo, "RESOLUTION", t_wo.started_at + timedelta(minutes=1), actor=self.dispatcher)
+        t_wo.refresh_from_db()
+        self.assertEqual(t_wo.resolution_state, SLATracking.TargetState.MET_LATE)
+
     def test_dispatcher_rejection_cancels_sla(self):
         """Dispatcher rejecting request cancels the active SLA tracking."""
         from apps.audit.models import AuditLog
         from apps.incidents import services as incident_services
-        from apps.sla.models import SLATracking, SLAEvent
+        from apps.sla.models import SLAEvent, SLATracking
 
         sr = incident_services.create_request(
             self.org,
