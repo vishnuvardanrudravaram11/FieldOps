@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-
 from django.conf import settings
 from django.core.cache.backends.locmem import LocMemCache
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle

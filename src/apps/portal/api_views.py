@@ -1,4 +1,5 @@
 from __future__ import annotations
+from apps.core.api import StandardPagination
 
 from drf_spectacular.utils import extend_schema, extend_schema_field
 from rest_framework import parsers, serializers, status, viewsets
@@ -8,7 +9,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.assets.models import Asset
-from apps.core.api import StandardPagination
 from apps.core.apiutils import paginate
 from apps.core.exceptions import Conflict, DomainError, NotFound, ValidationFailed
 from apps.incidents.models import ServiceRequest
@@ -16,7 +16,7 @@ from apps.tenancy.api import MEMBER_ONLY, TenantAPIMixin
 from apps.tenancy.models import Membership
 
 from . import selectors, services
-from .models import PortalAccount, PortalClosureConfirmation
+from .models import PortalAccount, PortalAssetGrant, PortalClosureConfirmation
 
 
 class PortalAccountSerializer(serializers.ModelSerializer):
@@ -82,7 +82,6 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
 
         queryset = self.filter_queryset(self.get_queryset())
         import uuid
-
         from django.db.models import Q
         try:
             val_uuid = uuid.UUID(str(lookup_val))

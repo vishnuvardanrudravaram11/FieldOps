@@ -49,7 +49,7 @@ def exception_handler(exc, context):
                 return _clean_msg(detail["detail"])
             for v in detail.values():
                 return _clean_msg(v)
-        elif isinstance(detail, list | tuple) and detail:
+        elif isinstance(detail, (list, tuple)) and detail:
             return _clean_msg(detail[0])
         return str(detail)
 

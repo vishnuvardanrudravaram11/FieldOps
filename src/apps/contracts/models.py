@@ -16,16 +16,31 @@ from apps.core.models import TenantOwnedModel
 
 
 class ServiceProvider(TenantOwnedModel):
+    class ProviderType(models.TextChoices):
+        OEM = "OEM", "OEM"
+        DEALER = "DEALER", "Dealer"
+        CONTRACTOR = "CONTRACTOR", "Contractor"
+        VENDOR = "VENDOR", "Vendor"
+        OTHER = "OTHER", "Other"
+
     name = models.CharField(max_length=150)
+    provider_type = models.CharField(max_length=30, choices=ProviderType.choices, default=ProviderType.OEM)
     contact_name = models.CharField(max_length=120, blank=True)
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=40, blank=True)
+    address = models.CharField(max_length=300, blank=True)
     notes = models.CharField(max_length=500, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["name"]
         constraints = [models.UniqueConstraint(Lower("name"), "organization", name="uniq_provider_name_per_org")]
+
+    def clean(self):
+        super().clean()
+        from apps.ui.forms import validate_business_name
+        if self.name:
+            validate_business_name(self.name, field_label="Provider name")
 
     def __str__(self):
         return self.name
@@ -70,6 +85,12 @@ class CoverageAgreement(TenantOwnedModel):
         ]
         indexes = [models.Index(fields=["organization", "site"]),
                    models.Index(fields=["organization", "is_active", "end_date"])]
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValidationError({"end_date": "End date cannot be before start date."})
 
     def __str__(self):
         return f"{self.reference} · {self.title}"

@@ -37,7 +37,7 @@ def is_client_membership(membership) -> bool:
     if membership is None:
         return False
 
-    from unittest.mock import MagicMock, Mock
+    from unittest.mock import Mock, MagicMock
     if isinstance(membership, (Mock, MagicMock)):
         if bool(membership.__dict__.get("is_client_mock") or membership.__dict__.get("_is_client")):
             return True
@@ -135,6 +135,8 @@ def is_client_membership(membership) -> bool:
             "incident.view_assigned",
             "incident.attach",
             "incident.confirm",
+            "qr.scan",
+            "user.self",
         }
         if isinstance(perms, set | list | tuple) and perms and all(p.startswith("portal.request.") or p in client_allowed for p in perms):
             return True

@@ -6,7 +6,7 @@ from django.db import migrations, models
 def infer_legacy_request_source(apps, schema_editor):
     cursor = schema_editor.connection.cursor()
     cursor.execute("""
-        SELECT 1 FROM information_schema.columns
+        SELECT 1 FROM information_schema.columns 
         WHERE table_name = 'workorders_workorder' AND column_name = 'service_request_reference'
     """)
     if not cursor.fetchone():

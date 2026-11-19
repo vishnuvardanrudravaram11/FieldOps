@@ -14,17 +14,16 @@ Verifies:
 5. Breaches can be acknowledged directly by Service Manager from the breaches workflow.
 """
 from datetime import timedelta
-
 import pytest
 from django.test import Client
 
 from apps.accounts.models import User
 from apps.rbac.models import MembershipRole
 from apps.rbac.services import seed_system_roles
-from apps.sites.models import Site
+from apps.sla.models import SLAProfile, SLATracking, SLABreach
 from apps.sla import services as sla_services
-from apps.sla.models import SLABreach, SLAProfile, SLATracking
 from apps.tenancy.models import Membership, Organization
+from apps.sites.models import Site
 
 pytestmark = pytest.mark.django_db
 
@@ -188,7 +187,7 @@ def test_bug_003_run_check_and_breach_acknowledgement_workflow(service_manager_s
     client = service_manager_setup["client"]
     org = service_manager_setup["org"]
     site = service_manager_setup["site"]
-    service_manager_setup["sm_membership"]
+    sm_membership = service_manager_setup["sm_membership"]
 
     # 1. Run Check Now via AJAX
     resp_check = client.post(

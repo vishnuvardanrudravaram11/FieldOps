@@ -1,6 +1,5 @@
 """Form helpers shared by module screens."""
 import re
-
 from django import forms
 from django.core.exceptions import ValidationError
 

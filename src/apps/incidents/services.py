@@ -53,7 +53,7 @@ SNAPSHOT = [
     "failure_category", "assigned_team", "occurred_at",
 ]
 _EDITABLE = {
-    "asset", "kind", "title", "description", "severity", "service_impact", "impact_notes",
+    "title", "description", "severity", "service_impact", "impact_notes",
     "failure_category", "assigned_team", "occurred_at", "downtime_started_at",
 }
 _SEVERITY_TO_PRIORITY = {"LOW": "LOW", "MEDIUM": "MEDIUM", "HIGH": "HIGH", "CRITICAL": "CRITICAL"}
@@ -97,9 +97,7 @@ def _report_text_matches(candidate: str, existing: str) -> bool:
     import difflib
     import re
 
-    def normalize(value: str) -> str:
-        return " ".join(re.findall(r"[a-z0-9]+", (value or "").casefold()))
-
+    normalize = lambda value: " ".join(re.findall(r"[a-z0-9]+", (value or "").casefold()))
     candidate, existing = normalize(candidate), normalize(existing)
     if not candidate or not existing:
         return False
@@ -518,11 +516,10 @@ def create_work_order_for_request(sr: ServiceRequest, *, actor, membership, requ
     The caller must hold ``work_order.create`` for the request's site. Optional planning values are passed through
     to M06; source-owned fields always come from the approved request.
     """
-    from django.contrib.contenttypes.models import ContentType
-
-    from apps.files.models import Attachment
     from apps.workorders import services as work_orders
     from apps.workorders.models import WorkOrder, WorkOrderEvidence
+    from apps.files.models import Attachment
+    from django.contrib.contenttypes.models import ContentType
 
     sr = ServiceRequest.objects.select_related("asset", "site").select_for_update(of=("self",)).get(pk=sr.pk)
     if sr.duplicate_of_id is not None:
@@ -797,7 +794,6 @@ def add_comment(
 ) -> ServiceRequestComment:
     """Adds a client-visible comment or an internal staff note to a service request."""
     import html
-
     from apps.core.exceptions import ValidationFailed
     from apps.ui.utils import is_client_membership
 

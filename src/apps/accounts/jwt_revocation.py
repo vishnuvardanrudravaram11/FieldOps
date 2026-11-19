@@ -1,5 +1,4 @@
 import time
-
 from django.core.cache import cache
 
 # Match SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"] (15 minutes = 900 seconds)

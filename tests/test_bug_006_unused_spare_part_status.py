@@ -3,12 +3,13 @@ Unused spare part line item ("asd srf") incorrectly displays a "Cancelled" statu
 despite never being requested or consumed on a closed or active work order.
 """
 from decimal import Decimal
-
 import pytest
 from django.test import Client
+from django.urls import reverse
 
 from apps.inventory import services as inv_services
 from apps.inventory.models import WorkOrderPart
+from apps.workorders import services as wo_services
 from apps.workorders.models import WorkOrder
 from tests.phase3_support import wo_in_progress
 

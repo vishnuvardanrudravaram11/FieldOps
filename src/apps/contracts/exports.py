@@ -437,7 +437,7 @@ def build_single_warranty_pdf(agreement, org, *, actor=None) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -896,7 +896,7 @@ def export_single_agreement_csv(ag) -> HttpResponse:
     response["Content-Disposition"] = f'attachment; filename="warranty_{safe_ref}_{timestamp}.csv"'
     writer = csv.writer(response)
     today = datetime.date.today()
-    
+
     # Header Section
     writer.writerow(["AGREEMENT DETAILS"])
     writer.writerow(["Reference", ag.reference])
@@ -919,7 +919,7 @@ def export_single_agreement_csv(ag) -> HttpResponse:
     if ag.exclusion_notes:
         writer.writerow(["Exclusion Notes", ag.exclusion_notes])
     writer.writerow([])
-    
+
     # Covered Assets Section
     writer.writerow(["COVERED ASSETS"])
     writer.writerow(["Asset Tag", "Asset Name", "Category", "Serial Number", "Status"])

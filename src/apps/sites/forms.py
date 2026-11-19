@@ -7,8 +7,12 @@ from apps.ui.forms import BootstrapFormMixin, validate_alphabetical_name
 
 from .geo_data import (
     CITIES_BY_STATE,
+    CITY_PINCODES,
     CITY_TO_STATE,
     COUNTRIES,
+    COUNTRY_CODES,
+    COUNTRY_DEFAULT_TIMEZONES,
+    COUNTRY_PHONE_PREFIXES,
     INDIA_STATE_PIN_PREFIXES,
     STATES_BY_COUNTRY,
     TIMEZONES,
@@ -158,7 +162,7 @@ class SiteForm(BootstrapFormMixin, forms.Form):
         city_choices = [("", "Select City...")]
         if curr_state and curr_state in CITIES_BY_STATE:
             city_choices += [(c, c) for c in CITIES_BY_STATE[curr_state]]
-
+        
         curr_city = (data.get("city") or "").strip() if data else ""
         if curr_city and curr_city not in [c for c, _ in city_choices]:
             city_choices.append((curr_city, curr_city))
@@ -288,7 +292,7 @@ class SiteForm(BootstrapFormMixin, forms.Form):
         phone = (self.cleaned_data.get("contact_phone") or "").strip()
         if phone:
             if any(c.isalpha() for c in phone):
-                raise forms.ValidationError("Phone number cannot contain letters.")
+                raise forms.ValidationError("Enter a valid phone number. Phone number cannot contain letters.")
             digits = [c for c in phone if c.isdigit()]
             if len(digits) < 7:
                 raise forms.ValidationError("Phone number must contain at least 7 digits.")

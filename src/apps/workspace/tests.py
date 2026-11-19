@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -8,8 +9,8 @@ from apps.rbac.models import MembershipRole, Role
 from apps.sites.models import Site
 from apps.tenancy.models import Membership, Organization
 from apps.workorders.models import WorkOrder
-from apps.workspace import services
 from apps.workspace.models import WorkNote
+from apps.workspace import services
 
 
 class WorkspaceWorkNoteAndDefectTests(TestCase):

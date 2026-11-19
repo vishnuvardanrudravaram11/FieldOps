@@ -1,13 +1,12 @@
+from __future__ import annotations
+import logging
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import IntegrityError, models
 """M05 HTML views. Same chain as M01/M02: login -> membership -> permission gate -> organization + site-scope
 restricted lookup (404) -> permission for the request's site (403) -> service (validation, transaction, audit)."""
-from __future__ import annotations
-
-import logging
 
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db import IntegrityError, models
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views import View
@@ -16,20 +15,13 @@ from apps.assets import selectors as asset_selectors
 from apps.core.exceptions import DomainError
 from apps.rbac import services as rbac
 from apps.sites import selectors as site_selectors
-from apps.sites.views import need, or404
+from apps.sites.views import form_page, need, or404
 from apps.ui.mixins import TenantPermissionMixin
 
 from . import selectors, services
 from .forms import DowntimeForm, EvidenceForm, RequestForm, ServiceRequestCommentForm
 from .models import ServiceRequest
-from .workflow import (
-    ACTION_PERMISSIONS,
-    BUTTON_STYLES,
-    REASON_REQUIRED,
-    REQUEST_STATUS,
-    SYSTEM_ACTIONS,
-    WORKFLOW_STATES,
-)
+from .workflow import ACTION_PERMISSIONS, BUTTON_STYLES, REASON_REQUIRED, REQUEST_STATUS, SYSTEM_ACTIONS, WORKFLOW_STATES
 
 TABS = [("overview", "Overview"), ("comments", "Communication"), ("evidence", "Evidence"), ("history", "History")]
 CONFIRMS = {"reject": "Reject this request?", "close": "Close this request?", "confirm": "Confirm resolution of this request?", "reopen": "Reopen this request for rework?"}
@@ -322,9 +314,8 @@ class RequestEditView(IncidentBase):
         qs = asset_selectors.assets_for(m, org, "asset.view")
         filtered_qs = scope.filter(qs.distinct(), "site_id")
         if current_asset_id:
-            from django.db.models import Q
-
             from apps.assets.models import Asset
+            from django.db.models import Q
             return Asset.objects.for_organization(org).filter(
                 Q(pk__in=filtered_qs.values("pk")) | Q(pk=current_asset_id)
             ).select_related("site").exclude(status__in=("RETIRED", "DISPOSED")).order_by("asset_tag")

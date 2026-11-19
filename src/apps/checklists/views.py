@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from apps.core.apiutils import htmx_success
-
 """M08 HTML views: template management (checklist.view / checklist.manage) and read-only inspection results with
 finding resolution. Technician execution lives in the M07 workspace and calls the same services. Chain: login ->
 membership -> permission gate -> organization (+ site) scoped lookup (404) -> permission for the object -> service."""

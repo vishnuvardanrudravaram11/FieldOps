@@ -32,6 +32,10 @@ def _activate(membership):
 @pytest.fixture
 def make_org(platform_admin):
     def _make(name, owner_email):
+        slug = Organization.make_slug(name)
+        existing = Organization.objects.filter(slug=slug).first()
+        if existing:
+            existing.delete()
         org, m = tenancy.create_organization(name=name, owner_email=owner_email, owner_name=f"{name} Owner",
                                              actor=platform_admin)
         _activate(m)

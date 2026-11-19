@@ -14,8 +14,7 @@ Health States:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterable
 
 if TYPE_CHECKING:
     from apps.assets.models import Asset
@@ -226,7 +225,7 @@ def annotate_tree_health(tree_node: dict[str, Any], organization=None) -> dict[s
         sub_count = 0
         for child in node.get("children", []):
             sub_count += _rollup(child)
-
+        
         node["child_breakdown_count"] = sub_count
         node["subtree_breakdown_count"] = direct_count + sub_count
         node["health"] = node["asset"]._health_info

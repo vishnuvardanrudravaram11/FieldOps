@@ -1,10 +1,9 @@
-from unittest.mock import MagicMock, patch
-
 import pytest
+from unittest.mock import MagicMock, patch
 from django.core.exceptions import ValidationError
 
-from apps.tenancy.forms import InviteForm, MemberEditForm
 from apps.ui.forms import validate_strict_email
+from apps.tenancy.forms import InviteForm, MemberEditForm
 
 
 def test_validate_strict_email_valid_formats():
@@ -42,11 +41,11 @@ def test_invite_form_email_rejects_numbers_in_domain():
     mock_org = MagicMock()
     mock_role = MagicMock()
     mock_role.pk = "role-1"
-
+    
     with patch("apps.tenancy.forms._role_field") as mock_rf, \
          patch("apps.tenancy.forms._site_field"):
         mock_rf.return_value = MagicMock(clean=MagicMock(return_value=[mock_role]))
-
+        
         # Invalid email with numbers starting domain (e.g. @23gmail.com or @23gmail)
         f1 = InviteForm(
             data={"email": "dtgtgtgtgtgr@23gmail.com", "full_name": "Valid Name", "roles": ["role-1"]},
@@ -126,7 +125,7 @@ def test_invite_form_mandatory_fields_and_stars():
         mock_field.required = True
         mock_field.clean.side_effect = ValidationError("Please select at least one role.")
         mock_rf.return_value = mock_field
-
+        
         form = InviteForm(data={}, org=mock_org)
         assert not form.is_valid()
         # Verify required marks

@@ -4,14 +4,15 @@ every button posts to an endpoint that calls a service."""
 from __future__ import annotations
 
 import datetime
+import logging
 
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.utils.html import format_html
 from django.views import View
-
-import logging
 
 from apps.assets import selectors as asset_selectors
 from apps.audit import services as audit
@@ -97,6 +98,11 @@ class AgreementListView(CBase):
         except Exception:
             providers = []
 
+        try:
+            can_create = rbac.has_permission_anywhere(m, "contract.create")
+        except Exception:
+            can_create = False
+
         return render(request, "contracts/agreements.html", {
             "page": page,
             "filters": request.GET,
@@ -104,7 +110,7 @@ class AgreementListView(CBase):
             "states": ("ACTIVE", "UPCOMING", "EXPIRED", "INACTIVE"),
             "sites": sites,
             "providers": providers,
-            "can_create": rbac.has_permission_anywhere(m, "contract.create"),
+            "can_create": can_create,
             "total_agreements": total_agreements,
             "active_agreements": active_agreements,
             "expired_agreements": expired_agreements,
@@ -140,7 +146,6 @@ class AgreementExportView(CBase):
             )
             resp = HttpResponse(result.body, content_type=result.content_type)
             resp["Content-Disposition"] = f'attachment; filename="{result.filename}"'
-            resp["Access-Control-Expose-Headers"] = "Content-Disposition"
             resp["Cache-Control"] = "private, no-store"
             resp["X-Content-Type-Options"] = "nosniff"
             return resp
@@ -168,9 +173,14 @@ class AgreementCreateView(CBase):
                 a = assets.filter(pk=request.GET["assets"]).first() if selectors._uuid_or_none(
                     request.GET["assets"]) else None
                 initial["site"] = a.site_id if a else None
-        return AgreementForm(data, providers=selectors.providers_for(org).filter(is_active=True), sites=sites,
+        form = AgreementForm(data, providers=selectors.providers_for(org).filter(is_active=True), sites=sites,
                              assets=assets, sla_profiles=SLAProfile.objects.for_organization(org).filter(
                                  is_active=True).order_by("name"), initial=initial)
+        form.fields["provider"].help_text = format_html(
+            'Need a new vendor? <a href="{}">+ Add provider</a>',
+            reverse("contracts:provider_new"),
+        )
+        return form
 
     def get(self, request):
         return form_page(request, title="New warranty / AMC / contract", form=self._form(request),
@@ -263,11 +273,11 @@ class AgreementEditView(AgreementBase):
             "end_date": ag.end_date, "terms": ag.terms, "exclusion_notes": ag.exclusion_notes,
             "sla_terms": ag.sla_terms, "sla_profile": ag.sla_profile_id, "renewal_alert_days": ag.renewal_alert_days,
             "excluded_work_types": [e.work_type for e in ag.exclusions.all()]}
-        providers = selectors.providers_for(org).filter(is_active=True) | selectors.providers_for(org).filter(
-            pk=ag.provider_id)
-        profiles = SLAProfile.objects.for_organization(org).filter(is_active=True) | SLAProfile.objects.for_organization(
-            org).filter(pk=ag.sla_profile_id)
-        return AgreementForm(data, providers=providers, sites=None, assets=None, sla_profiles=profiles.order_by("name"),
+        providers = (selectors.providers_for(org).filter(is_active=True) | selectors.providers_for(org).filter(
+            pk=ag.provider_id)).distinct().order_by("name")
+        profiles = (SLAProfile.objects.for_organization(org).filter(is_active=True) | SLAProfile.objects.for_organization(
+            org).filter(pk=ag.sla_profile_id)).distinct().order_by("name")
+        return AgreementForm(data, providers=providers, sites=None, assets=None, sla_profiles=profiles,
                              editing=True, initial=initial)
 
     def _page(self, request, ag, form, status=200):
@@ -404,8 +414,11 @@ class ProviderCreateView(CBase):
         form = ProviderForm(request.POST)
         if form.is_valid():
             try:
-                p = services.create_provider(request.organization, actor=request.user, request=request,
-                                             **form.cleaned_data)
+                data = dict(form.cleaned_data)
+                is_active = data.pop("status", "ACTIVE") == "ACTIVE"
+                p = services.create_provider(
+                    request.organization, actor=request.user, request=request, is_active=is_active, **data
+                )
                 messages.success(request, f"Provider {p.name} created.")
                 return redirect("contracts:providers")
             except DomainError as exc:
@@ -424,15 +437,19 @@ class ProviderEditView(CBase):
 
     def get(self, request, pk):
         p = or404(selectors.get_provider, request.organization, pk)
-        return self._page(request, p, ProviderForm(initial={
-            f: getattr(p, f) for f in ("name", "contact_name", "email", "phone", "notes")}))
+        initial = {f: getattr(p, f) for f in ("name", "provider_type", "contact_name", "email", "phone", "address", "notes")}
+        initial["status"] = "ACTIVE" if p.is_active else "INACTIVE"
+        return self._page(request, p, ProviderForm(initial=initial))
 
     def post(self, request, pk):
         p = or404(selectors.get_provider, request.organization, pk)
         form = ProviderForm(request.POST)
         if form.is_valid():
             try:
-                services.update_provider(p, actor=request.user, request=request, **form.cleaned_data)
+                data = dict(form.cleaned_data)
+                is_active = data.pop("status", "ACTIVE") == "ACTIVE"
+                services.update_provider(p, actor=request.user, request=request, **data)
+                services.set_provider_active(p, is_active, actor=request.user, request=request)
                 messages.success(request, "Provider saved.")
                 return redirect("contracts:providers")
             except DomainError as exc:

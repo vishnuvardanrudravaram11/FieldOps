@@ -2,12 +2,12 @@
 Action buttons and input fields under the Actions column are misaligned and overflowing in the parts table.
 """
 from decimal import Decimal
-
 import pytest
 from django.test import Client
 from django.urls import reverse
 
 from apps.inventory import services as inv_services
+from apps.inventory.models import WorkOrderPart
 from tests.phase3_support import wo_in_progress
 
 pytestmark = pytest.mark.django_db
@@ -28,7 +28,7 @@ def test_bug_004_parts_table_actions_alignment_classes_and_structure(inv_):
 
     wo = wo_in_progress(inv_)
 
-    inv_services.request_part(
+    line = inv_services.request_part(
         wo,
         part,
         Decimal("2"),

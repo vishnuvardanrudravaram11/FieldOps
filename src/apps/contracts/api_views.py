@@ -5,9 +5,9 @@ scope (404) -> permission for the agreement's site (403) -> service. Providers a
 data: any holder of the permission (at any site) may use them."""
 import datetime
 
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, extend_schema_field
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -29,18 +29,77 @@ WORK_TYPE_CHOICES = [(w, w) for w in services.WORK_TYPES]
 
 
 class ProviderSerializer(serializers.ModelSerializer):
+    address = serializers.CharField(allow_null=True, required=False, allow_blank=True)
+
     class Meta:
         model = ServiceProvider
-        fields = ["id", "name", "contact_name", "email", "phone", "notes", "is_active", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "name",
+            "provider_type",
+            "contact_name",
+            "email",
+            "phone",
+            "address",
+            "notes",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = fields
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        for field in ("address", "contact_name", "email", "phone", "notes"):
+            if ret.get(field) is None:
+                ret[field] = ""
+        return ret
 
 
 class ProviderWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=150)
+    provider_type = serializers.ChoiceField(
+        choices=ServiceProvider.ProviderType.choices, required=False, default=ServiceProvider.ProviderType.OEM
+    )
     contact_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
     email = serializers.EmailField(max_length=254, required=False, allow_blank=True)
     phone = serializers.CharField(max_length=40, required=False, allow_blank=True)
+    address = serializers.CharField(max_length=300, required=False, allow_blank=True)
     notes = serializers.CharField(max_length=500, required=False, allow_blank=True)
+
+    def validate_name(self, value):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from apps.ui.forms import validate_business_name
+        try:
+            return validate_business_name(value, field_label="Provider name")
+        except DjangoValidationError as exc:
+            msg = str(exc.message if hasattr(exc, "message") else exc.messages[0])
+            raise serializers.ValidationError(msg)
+
+    def validate_contact_name(self, value):
+        if not value:
+            return ""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from apps.ui.forms import validate_alphabetical_name
+        try:
+            return validate_alphabetical_name(value, field_label="Contact name", min_len=2, required=False)
+        except DjangoValidationError as exc:
+            msg = str(exc.message if hasattr(exc, "message") else exc.messages[0])
+            raise serializers.ValidationError(msg)
+
+    def validate_notes(self, value):
+        if not value:
+            return ""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from apps.ui.forms import validate_safe_text
+        try:
+            return validate_safe_text(value, field_label="Notes", max_len=500, required=False)
+        except DjangoValidationError as exc:
+            msg = str(exc.message if hasattr(exc, "message") else exc.messages[0])
+            raise serializers.ValidationError(msg)
 
 
 class ProviderPatchSerializer(ProviderWriteSerializer):
@@ -121,7 +180,7 @@ class AssetRefSerializer(serializers.Serializer):
 
 
 class CheckSerializer(serializers.ModelSerializer):
-    work_order_number = serializers.CharField(source="work_order.number", read_only=True)
+    work_order_number = serializers.SerializerMethodField()
     asset_tag = serializers.CharField(source="asset.asset_tag", read_only=True)
     agreement_reference = serializers.CharField(source="agreement.reference", read_only=True, default=None, allow_null=True)
     provider_name = serializers.CharField(source="agreement.provider.name", read_only=True, default=None, allow_null=True)
@@ -132,6 +191,13 @@ class CheckSerializer(serializers.ModelSerializer):
                   "agreement_reference", "provider_name", "work_type", "reference_date", "eligible", "reason",
                   "created_at"]
         read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_work_order_number(self, obj) -> str | None:
+        wo = getattr(obj, "work_order", None)
+        if not wo:
+            return None
+        return getattr(wo, "order_number", None) or getattr(wo, "number", None)
 
 
 class CheckCreateSerializer(serializers.Serializer):
@@ -246,13 +312,18 @@ class AgreementViewSet(TenantAPIMixin, viewsets.ViewSet):
 
     def perform_content_negotiation(self, request, force=False):
         if getattr(self, "action", None) in ("export", "download"):
-            from rest_framework.renderers import BaseRenderer
+            from rest_framework.renderers import BaseRenderer, JSONRenderer
 
             class PassthroughRenderer(BaseRenderer):
                 media_type = "*/*"
                 format = "raw"
 
                 def render(self, data, accepted_media_type=None, renderer_context=None):
+                    response = renderer_context.get("response") if renderer_context else None
+                    if (response is not None and getattr(response, "exception", False)) or isinstance(data, (dict, list)):
+                        if response is not None:
+                            response["Content-Type"] = "application/json; charset=utf-8"
+                        return JSONRenderer().render(data, "application/json", renderer_context)
                     return data
 
             return (PassthroughRenderer(), "*/*")
@@ -349,9 +420,7 @@ class AgreementViewSet(TenantAPIMixin, viewsets.ViewSet):
         return Response(AgreementSerializer(self._ag(request, pk)).data)
 
     @extend_schema(parameters=[query_param("days", "look-ahead window in days (default 60, max 365)",
-                                           OpenApiTypes.INT)], responses=AgreementSerializer)
-    @action(detail=False, methods=["get"])
-    @extend_schema(parameters=[query_param("days", "integer days")], responses=AgreementSerializer)
+                                           OpenApiTypes.INT)], responses=AgreementSerializer(many=True))
     @action(detail=False, methods=["get"])
     def expiring(self, request):
         try:
@@ -360,7 +429,6 @@ class AgreementViewSet(TenantAPIMixin, viewsets.ViewSet):
             raise ValidationFailed("days must be a whole number.", code="invalid_number") from exc
         return paginate(request, selectors.expiring(request.membership, request.organization, days),
                         AgreementSerializer)
-
 
     @extend_schema(parameters=[
         query_param("format", "csv | xlsx | pdf (default csv)"),
@@ -371,7 +439,11 @@ class AgreementViewSet(TenantAPIMixin, viewsets.ViewSet):
         query_param("provider", "provider id", OpenApiTypes.UUID),
         query_param("asset", "asset id", OpenApiTypes.UUID),
         query_param("ordering", "ordering field"),
-    ], responses={200: OpenApiTypes.BINARY})
+    ], responses={
+        (200, "text/csv"): OpenApiTypes.BINARY,
+        (200, "application/pdf"): OpenApiTypes.BINARY,
+        (200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"): OpenApiTypes.BINARY,
+    })
     @action(detail=False, methods=["get"])
     def export(self, request):
         fmt = (request.query_params.get("format") or request.query_params.get("export_format") or "csv").lower()
@@ -392,7 +464,10 @@ class AgreementViewSet(TenantAPIMixin, viewsets.ViewSet):
         resp["X-Content-Type-Options"] = "nosniff"
         return resp
 
-    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @extend_schema(responses={
+        (200, "application/pdf"): OpenApiTypes.BINARY,
+        (200, "text/csv"): OpenApiTypes.BINARY,
+    })
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):
         ag = self._ag(request, pk, "contract.view")

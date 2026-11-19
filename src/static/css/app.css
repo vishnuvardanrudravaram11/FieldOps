@@ -31,9 +31,10 @@ body {
 }
 
 body.fx-app {
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .fx-icon {
@@ -53,28 +54,43 @@ body.fx-app {
 .fx-brand-mark {
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   background: #0B1F3A;
   border: 1.5px solid var(--fx-gold);
   color: var(--fx-gold);
   font-size: .8rem;
   font-weight: 800;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.fx-brand-mark .fx-brand-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.fx-brand-mark .fx-brand-fallback {
+  color: var(--fx-gold);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .fx-app .fx-brand {
   color: #fff;
 }
 
-/* Senior ERP Shell Architecture: 100vh viewport, fixed left sidebar, independent content scrolling */
+/* Senior ERP Shell Architecture: sticky left sidebar with natural multi-widget document flow */
 .fx-layout {
   display: flex;
-  height: 100vh;
-  height: 100dvh;
-  width: 100vw;
-  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  overflow-x: hidden;
   position: relative;
   background: var(--fx-bg);
 }
@@ -84,7 +100,12 @@ body.fx-app {
   flex: 0 0 var(--fx-sidebar-w);
   background: var(--fx-nav-bg);
   color: var(--fx-nav-text);
-  height: 100%;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -164,6 +185,13 @@ body.fx-app {
   color: #64748B;
   font-weight: 700;
   user-select: none;
+  transition: color 0.15s ease;
+}
+
+.fx-nav-section.is-active,
+.fx-nav-section.active {
+  color: #CBD5E1;
+  letter-spacing: 0.1em;
 }
 
 .fx-nav-section:first-child {
@@ -218,15 +246,21 @@ body.fx-app {
 .fx-main {
   flex: 1 1 auto;
   min-width: 0;
-  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   background: var(--fx-bg);
+  margin-left: var(--fx-sidebar-w);
+  width: calc(100% - var(--fx-sidebar-w));
+  max-width: calc(100% - var(--fx-sidebar-w));
 }
 
 .fx-topbar {
   flex: 0 0 auto;
+  position: sticky;
+  top: 0;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -238,11 +272,40 @@ body.fx-app {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
+.fx-topbar-back-btn {
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.22rem 0.55rem;
+  border-radius: 4px;
+}
+
+.fx-topbar-breadcrumbs {
+  margin-left: 0.25rem;
+  max-width: 480px;
+}
+
+.fx-topbar-breadcrumbs .breadcrumb {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  flex-wrap: nowrap;
+}
+
+.fx-topbar-breadcrumbs .breadcrumb-item {
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.fx-topbar-breadcrumbs .breadcrumb-item + .breadcrumb-item::before {
+  color: var(--fx-muted, #64748b);
+  content: "/";
+  padding: 0 0.35rem;
+}
+
 .fx-content {
   flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
   padding: 1.5rem 1.75rem 3rem;
   width: 100%;
 }
@@ -264,6 +327,12 @@ body.fx-app {
 
   .fx-nav-open .fx-sidebar {
     left: 0;
+  }
+
+  .fx-main {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .fx-sidebar-backdrop {
@@ -379,6 +448,45 @@ body.fx-app {
 
 .fx-table tbody tr {
   transition: background-color 0.12s ease;
+}
+
+/* Work Order Parts Table & Actions Alignment (Bug-004) */
+.fx-parts-table {
+  min-width: 1000px;
+}
+.fx-parts-actions-col {
+  min-width: 360px;
+  text-align: right;
+}
+.fx-parts-action-group {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+}
+.fx-parts-action-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  flex-wrap: nowrap;
+}
+.fx-parts-wh-select {
+  min-width: 125px;
+  max-width: 175px;
+  width: auto;
+  font-size: 0.8125rem;
+}
+.fx-parts-qty-input {
+  width: 4.5rem !important;
+  min-width: 4.5rem !important;
+  text-align: center;
+  font-size: 0.8125rem;
+}
+.fx-parts-btn {
+  white-space: nowrap !important;
+  font-size: 0.8125rem;
 }
 
 .fx-stat {
@@ -555,6 +663,73 @@ body.fx-app {
   color: #926C00;
   border: 1px solid #E2C968;
 }
+
+
+/* Component Health Status Badges reflecting active breakdown tickets */
+.fx-health-badge {
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.22rem 0.65rem;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  transition: all 0.15s ease-in-out;
+}
+
+.fx-health-badge.fx-health-success {
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid #A7F3D0;
+}
+
+.fx-health-badge.fx-health-warning {
+  background: #FFFBEB;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
+.fx-health-badge.fx-health-danger {
+  background: #FEF2F2;
+  color: #991B1B;
+  border: 1px solid #FECACA;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2);
+}
+
+.fx-health-badge.fx-health-secondary {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.fx-health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes fx-health-beacon {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6);
+  }
+
+  70% {
+    box-shadow: 0 0 0 5px rgba(220, 38, 38, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+
+.fx-health-pulse {
+  animation: fx-health-beacon 1.8s infinite ease-out;
+}
+
 
 /* question builder / checklist execution items */
 .fx-question-card {
@@ -759,6 +934,24 @@ body.fx-app {
 .fx-bell-menu {
   width: 340px;
   max-width: 90vw;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+@media (max-width: 576px) {
+  .fx-bell-menu {
+    position: fixed !important;
+    top: 54px !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: calc(100vw - 16px) !important;
+    transform: none !important;
+    border-radius: 8px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18) !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+    z-index: 1055 !important;
+  }
 }
 
 /* dialogs / drawer */
@@ -818,6 +1011,12 @@ body.fx-app {
   font-size: 1.15rem;
 }
 
+.keep-center{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .fx-auth-card .fx-brand-mark {
   background: #0B1F3A;
   border: 1.5px solid var(--fx-gold);
@@ -828,7 +1027,7 @@ body.fx-app {
 .fx-auth-card input[type="email"],
 .fx-auth-card input[type="password"] {
   width: 100%;
-  padding: 0.55rem 0.85rem;
+  padding: 1rem 2.2rem;
   font-size: 0.92rem;
   border: 1px solid #CBD5E1;
   border-radius: 7px;
@@ -981,21 +1180,23 @@ body.fx-app {
 /* Interactive Hierarchy Hub & Tree View Styles */
 .fx-hierarchy-wrapper {
   background: var(--fx-surface);
+  border: 1px solid var(--fx-border);
   border-radius: var(--fx-radius);
+  overflow: hidden;
   position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .fx-hierarchy-toolbar {
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 1.15rem;
   background: #F8FAFC;
   border-bottom: 1px solid var(--fx-border);
-  border-top-left-radius: var(--fx-radius);
-  border-top-right-radius: var(--fx-radius);
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.75rem;
+  position: static !important;
 }
 
 .fx-hierarchy-toolbar .btn-sm {
@@ -1092,51 +1293,59 @@ body.fx-app {
 }
 
 .fx-hierarchy-container {
-  padding: 1rem 1.15rem 2rem;
+  padding: 1.25rem 1.25rem 2rem;
   overflow-x: auto;
+  overflow-y: visible;
   min-height: 280px;
-  scrollbar-width: thin;
+  background: #FFFFFF;
 }
 
 .fx-tree-actions .dropdown-menu {
   z-index: 1060;
 }
 
-.fx-tree-root,
-.fx-tree-branch {
+.fx-tree-root {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
 .fx-tree-branch {
-  padding-left: 1.75rem;
+  list-style: none;
+  margin: 0.45rem 0 0 0;
+  padding: 0 0 0 1.75rem;
   position: relative;
-  margin-top: 0.4rem;
-}
-
-.fx-tree-branch::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 1.2rem;
-  left: 0.8rem;
-  width: 1.5px;
-  background: #CBD5E1;
 }
 
 .fx-tree-node-item {
   position: relative;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.55rem;
 }
 
+/* Continuous vertical guide line connecting sibling nodes */
 .fx-tree-branch>.fx-tree-node-item::before {
   content: "";
   position: absolute;
-  top: 1.25rem;
+  top: 0;
+  left: -0.95rem;
+  width: 2px;
+  height: 100%;
+  background: #CBD5E1;
+}
+
+/* Last child terminates the vertical guide cleanly at the horizontal branch */
+.fx-tree-branch>.fx-tree-node-item:last-child::before {
+  height: 1.65rem;
+}
+
+/* Horizontal branch connecting vertical guide into the node card */
+.fx-tree-branch>.fx-tree-node-item::after {
+  content: "";
+  position: absolute;
+  top: 1.65rem;
   left: -0.95rem;
   width: 0.95rem;
-  height: 1.5px;
+  height: 2px;
   background: #CBD5E1;
 }
 
@@ -1144,18 +1353,23 @@ body.fx-app {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.95rem;
   background: #FFFFFF;
   border: 1px solid var(--fx-border);
   border-left: 4px solid #94A3B8;
   border-radius: 8px;
-  padding: 0.65rem 0.85rem;
-  transition: all 0.12s ease;
+  padding: 0.65rem 0.95rem;
+  min-height: 52px;
+  transition: all 0.15s ease;
+  min-width: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .fx-tree-node-card:hover {
   border-color: #94A3B8;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
 }
 
 .fx-tree-node-card.role-root {
@@ -1201,7 +1415,8 @@ body.fx-app {
   color: var(--fx-text);
 }
 
-.fx-tree-expander.collapsed {
+.fx-tree-expander.collapsed,
+.fx-tree-expander.is-collapsed {
   transform: rotate(-90deg);
 }
 
@@ -1237,6 +1452,67 @@ body.fx-app {
   background: #ECFDF5;
   color: #047857;
   border: 1px solid #A7F3D0;
+}
+
+.fx-role-badge .fx-qty-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.35rem;
+  margin-left: 0.3rem;
+  background: rgba(0, 0, 0, 0.07);
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.7rem;
+}
+
+.fx-part-badge {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+  background: #F8FAFC;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.fx-part-badge .fx-part-copy-btn {
+  background: transparent;
+  border: 0;
+  padding: 0.28rem 0.5rem;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-family: inherit;
+  font-size: inherit;
+  transition: all 0.12s ease;
+}
+
+.fx-part-badge .fx-part-copy-btn:hover {
+  background: #EDF2F7;
+  color: #0B1F3A;
+}
+
+.fx-part-badge .fx-part-link-btn {
+  border: 0;
+  border-left: 1px solid #CBD5E1;
+  padding: 0.28rem 0.45rem;
+  color: #64748B;
+  background: #F1F5F9;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: all 0.12s ease;
+}
+
+.fx-part-badge .fx-part-link-btn:hover {
+  background: #E2E8F0;
+  color: #0d6efd;
 }
 
 .fx-part-pill {
@@ -1583,13 +1859,13 @@ body.fx-app {
   padding: 16px;
   background-color: #ffffff;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .completion-kpi-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07);
 }
 
 .evidence-dropzone {
@@ -1615,110 +1891,951 @@ body.fx-app {
   border: 1px solid #cbd5e1;
 }
 
-/* ==========================================================================
-   HTMX Loading States & Animations
-   ========================================================================== */
 
-/* Global top progress indicator for HTMX requests */
-#global-loading-indicator,
-.fx-global-loading-bar {
+/* --- Global Loading Bar & Responsive State Transitions --- */
+.fx-global-loader {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
+  width: 0%;
   height: 3px;
+  background: linear-gradient(90deg, #2563eb, #38bdf8, #2563eb);
+  background-size: 200% 100%;
   z-index: 99999;
+  opacity: 0;
   pointer-events: none;
-  background: linear-gradient(90deg, #0d6efd 0%, #00b4d8 50%, #0d6efd 100%);
-  background-size: 200% 100%;
-  opacity: 0;
-  transition: opacity 0.2s ease-in-out;
+  transition: opacity 0.2s ease, width 0.3s ease;
 }
 
-#global-loading-indicator.htmx-request,
-.fx-global-loading-bar.htmx-request {
+.fx-global-loader.is-active,
+.fx-global-loader.htmx-request,
+.htmx-request .fx-global-loader,
+body.htmx-request .fx-global-loader {
   opacity: 1;
-  animation: fx-progress-shimmer 1.2s infinite linear;
+  width: 90%;
+  animation: fxLoaderSlide 1.2s ease-in-out infinite;
 }
 
-@keyframes fx-progress-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+@keyframes fxLoaderSlide {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
-/* Agreement list card loading states */
-#agreements-list-card {
-  position: relative;
+
+/* --- FieldOps Nexus Skeleton Loading Shimmer System --- */
+@keyframes fxSkeletonPulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
-#agreements-list-card.htmx-request {
-  cursor: progress;
-}
-
-/* Card top shimmer bar */
-.agreements-loading-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #0d6efd 0%, #00b4d8 50%, #0d6efd 100%);
-  background-size: 200% 100%;
-  border-top-left-radius: var(--fx-radius, 10px);
-  border-top-right-radius: var(--fx-radius, 10px);
-  opacity: 0;
-  z-index: 5;
+.fx-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.12) 37%,
+    rgba(255, 255, 255, 0.04) 63%
+  );
+  background-size: 400% 100%;
+  animation: fxSkeletonPulse 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  border-radius: var(--fx-radius-md, 8px);
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  user-select: none;
 }
 
-#agreements-list-card.htmx-request .agreements-loading-bar {
-  opacity: 1;
-  animation: fx-progress-shimmer 1.2s infinite linear;
+body:not(.dark) .fx-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 25%,
+    rgba(0, 0, 0, 0.09) 37%,
+    rgba(0, 0, 0, 0.04) 63%
+  );
+  background-size: 400% 100%;
+  animation: fxSkeletonPulse 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-/* Filter toolbar inline loading indicator */
-.agreements-filter-spinner {
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s;
+.fx-skeleton-text {
+  height: 0.875rem;
+  margin-bottom: 0.5rem;
+  border-radius: 4px;
 }
 
-#agreements-list-card.htmx-request .agreements-filter-spinner {
-  opacity: 1;
-  visibility: visible;
+.fx-skeleton-title {
+  height: 1.25rem;
+  width: 60%;
+  margin-bottom: 0.75rem;
+  border-radius: 6px;
 }
 
-/* Table loading overlay */
-.agreements-table-overlay {
-  position: absolute;
-  inset: 0;
-  min-height: 180px;
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+.fx-skeleton-badge {
+  height: 1rem;
+  width: 4rem;
+  border-radius: 9999px;
+  display: inline-block;
+}
+
+.fx-skeleton-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.fx-skeleton-btn {
+  height: 2.25rem;
+  width: 5rem;
+  border-radius: 6px;
+}
+
+.fx-skeleton-card {
+  padding: 1.25rem;
+  border-radius: var(--fx-radius-lg, 12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.fx-skeleton-table-row {
   display: flex;
   align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* HTMX Skeleton Swap Helper */
+.htmx-indicator.fx-skeleton-container {
+  display: none;
+}
+.htmx-request .htmx-indicator.fx-skeleton-container,
+.htmx-request.htmx-indicator.fx-skeleton-container {
+  display: block;
+}
+.htmx-request .fx-skeleton-hide-on-request {
+  display: none;
+}
+
+/* Smooth Table & Container Loading Opacity Transitions */
+.htmx-request.table,
+.htmx-request .table,
+.htmx-request tbody,
+.htmx-request.table-responsive {
+  opacity: 0.55;
+  transition: opacity 0.2s ease-in-out;
+  pointer-events: none;
+}
+
+
+/* ==========================================================================
+   Responsive Layout & Mobile Overflow Protections (FieldOps Nexus)
+   ========================================================================== */
+
+/* 1. Global Viewport Overflow Protections */
+html:not(:has(body.fx-public-site)), body:not(.fx-public-site) {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.fx-layout {
+  max-width: 100vw;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.fx-main {
+  max-width: 100vw;
+  width: 100%;
+  overflow-x: hidden;
+  min-width: 0;
+}
+
+.fx-content {
+  max-width: 100vw;
+  width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+/* 2. Toast Container Sticky Positioning */
+.fx-toast-container {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 1060;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* 3. Table Responsiveness Guarantee */
+.table-responsive {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 4. Topbar Mobile Adaptation */
+@media (max-width: 991.98px) {
+  .fx-topbar {
+    height: 54px;
+    padding: 0 0.85rem;
+    gap: 0.65rem;
+    max-width: 100vw;
+  }
+}
+
+@media (max-width: 768px) {
+  .fx-topbar {
+    height: 52px;
+    padding: 0 0.65rem;
+    gap: 0.5rem;
+  }
+
+  .fx-topbar .fx-search {
+    width: auto;
+    flex: 1 1 110px;
+    min-width: 60px;
+    max-width: 170px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.82rem;
+  }
+
+  .fx-topbar .ms-auto {
+    gap: 0.35rem !important;
+  }
+
+  .fx-topbar select.form-select-sm {
+    max-width: 110px;
+    font-size: 0.75rem;
+    padding: 0.2rem 1.25rem 0.2rem 0.4rem;
+  }
+
+  .fx-topbar .dropdown > .btn {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .fx-content {
+    padding: 0.85rem;
+  }
+
+  .table {
+    margin-bottom: 0;
+  }
+
+  .fx-content table:not(.table-responsive > table) {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fx-tree-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .fx-tree-search {
+    min-width: 100%;
+  }
+
+  .fx-tree-node-card {
+    padding: 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .fx-tree-branch {
+    padding-left: 0.75rem;
+  }
+}
+
+/* 5. Mobile Form & Header Responsive Layout */
+@media (max-width: 576px) {
+
+  .fx-filter-bar,
+  form[id$="-filter-form"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+
+  .fx-filter-bar input,
+  .fx-filter-bar select,
+  form[id$="-filter-form"] input,
+  form[id$="-filter-form"] select {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .fx-page-header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.75rem;
+  }
+
+  .fx-page-header .d-flex {
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 0.4rem !important;
+  }
+
+  .fx-page-header .btn {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .modal-dialog {
+    margin: 0.5rem auto;
+    max-width: calc(100vw - 1rem);
+  }
+
+  .modal-content {
+    border-radius: 12px;
+  }
+
+  .fx-drawer {
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
+}
+
+/* 6. Ultra-narrow Mobile Adjustments (< 400px) */
+@media (max-width: 400px) {
+  .fx-topbar .fx-search {
+    max-width: 100px;
+  }
+
+  .fx-topbar select.form-select-sm {
+    max-width: 75px;
+  }
+
+  .fx-topbar .dropdown > .btn {
+    max-width: 70px;
+  }
+}
+
+/* 7. Custom 404 & Error Page */
+.fx-error-body {
+  background: #F8FAFC;
+  min-height: 100vh;
+}
+
+.fx-error-page {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+
+/* ==========================================================================
+   Universal Responsive Table Cards (Mobile & Tablet Overflow Elimination)
+   ========================================================================== */
+
+/* 1. Global Box Sizing & Viewport Constraints */
+html:not(:has(body.fx-public-site)), body:not(.fx-public-site) {
+  width: 100% !important;
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.fx-layout {
+  width: 100% !important;
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+}
+
+@media (min-width: 992px) {
+  .fx-main {
+    flex: 1 1 auto !important;
+    margin-left: var(--fx-sidebar-w) !important;
+    max-width: calc(100% - var(--fx-sidebar-w)) !important;
+    width: calc(100% - var(--fx-sidebar-w)) !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+  }
+}
+@media (max-width: 991.98px) {
+  .fx-main {
+    flex: 1 1 auto !important;
+    margin-left: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+  }
+}
+
+.fx-content {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  box-sizing: border-box !important;
+}
+
+/* 2. Topbar Responsive Strict Sizing */
+@media (max-width: 767.98px) {
+  .fx-topbar {
+    height: 52px !important;
+    padding: 0 0.5rem !important;
+    gap: 0.35rem !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+  }
+
+  .fx-topbar .fx-search {
+    flex: 0 1 110px !important;
+    min-width: 0 !important;
+    max-width: 125px !important;
+    padding: 0.2rem 0.45rem !important;
+  }
+
+  .fx-topbar .fx-search input {
+    font-size: 0.78rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .fx-topbar .ms-auto {
+    gap: 0.35rem !important;
+    flex-shrink: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .fx-topbar select.form-select-sm {
+    max-width: 90px !important;
+    font-size: 0.72rem !important;
+    padding: 0.2rem 1.1rem 0.2rem 0.35rem !important;
+  }
+
+  .fx-topbar .dropdown {
+    flex-shrink: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .fx-topbar .dropdown > .btn {
+    max-width: 105px !important;
+    font-size: 0.75rem !important;
+    padding: 0.22rem 0.45rem !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .fx-topbar .fx-search {
+    max-width: 85px !important;
+  }
+
+  .fx-topbar .fx-search input::placeholder {
+    color: transparent !important;
+  }
+
+  .fx-topbar .dropdown > .btn {
+    max-width: 85px !important;
+  }
+
+  .fx-topbar select.form-select-sm {
+    max-width: 75px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .fx-topbar .fx-search {
+    display: none !important;
+  }
+
+  .fx-topbar .dropdown > .btn {
+    max-width: 75px !important;
+  }
+}
+
+/* 3. Mobile Content & Card Padding */
+@media (max-width: 767.98px) {
+  .fx-content {
+    padding: 0.65rem 0.65rem 2.5rem !important;
+  }
+
+  .fx-card,
+  .card {
+    padding: 0.75rem !important;
+    margin-bottom: 0.75rem !important;
+    max-width: 100% !important;
+  }
+
+  .fx-page-header {
+    margin-bottom: 0.75rem !important;
+  }
+
+  .nav-tabs {
+    flex-wrap: wrap !important;
+    gap: 0.25rem !important;
+    border-bottom: 1px solid var(--fx-border) !important;
+  }
+
+  .nav-tabs .nav-link {
+    font-size: 0.8rem !important;
+    padding: 0.35rem 0.65rem !important;
+  }
+}
+
+/* 4. Universal Responsive Table Cards (< 768px) */
+@media (max-width: 767.98px) {
+  .table-responsive {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .table-responsive>.table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked),
+  .fx-table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  .table-responsive>.table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) thead,
+  .fx-table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) thead {
+    display: none !important;
+  }
+
+  .table-responsive>.table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody,
+  .fx-table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.6rem !important;
+    width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .table-responsive>.table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody tr,
+  .fx-table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody tr {
+    display: flex !important;
+    flex-direction: column !important;
+    background: #ffffff !important;
+    border: 1px solid var(--fx-border) !important;
+    border-radius: 8px !important;
+    padding: 0.65rem 0.75rem !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .table-responsive>.table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody tr td,
+  .fx-table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody tr td {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 0.35rem 0 !important;
+    border: none !important;
+    border-bottom: 1px dashed #f1f5f9 !important;
+    font-size: 0.82rem !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    text-align: right !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .table-responsive>.table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody tr td:last-child,
+  .fx-table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody tr td:last-child {
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+  }
+
+  .table-responsive>.table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody tr td[data-label]::before,
+  .fx-table:not(.wo-list-table):not(.fx-calendar-table):not(.table-unstacked) tbody tr td[data-label]::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.72rem;
+    color: var(--fx-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    text-align: left;
+    padding-right: 0.75rem;
+    flex-shrink: 0;
+    max-width: 48%;
+  }
+
+  /* Block layout for Title / Description / Long Text fields */
+  .table-responsive>.table tbody tr td[data-label*="Title"],
+  .table-responsive>.table tbody tr td[data-label*="Description"],
+  .table-responsive>.table tbody tr td[data-label*="PM Order"],
+  .table-responsive>.table tbody tr td[data-label*="Request Number"],
+  .table-responsive>.table tbody tr td[data-label*="Name"],
+  .fx-table tbody tr td[data-label*="Title"],
+  .fx-table tbody tr td[data-label*="Description"],
+  .fx-table tbody tr td[data-label*="Name"] {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    text-align: left !important;
+    gap: 0.15rem !important;
+  }
+
+  .table-responsive>.table tbody tr td[data-label*="Title"]::before,
+  .table-responsive>.table tbody tr td[data-label*="Description"]::before,
+  .table-responsive>.table tbody tr td[data-label*="PM Order"]::before,
+  .table-responsive>.table tbody tr td[data-label*="Request Number"]::before,
+  .table-responsive>.table tbody tr td[data-label*="Name"]::before,
+  .fx-table tbody tr td[data-label*="Title"]::before,
+  .fx-table tbody tr td[data-label*="Description"]::before,
+  .fx-table tbody tr td[data-label*="Name"]::before {
+    max-width: 100% !important;
+  }
+
+  /* Empty State Rows */
+  .table-responsive>.table tbody tr td[colspan],
+  .fx-table tbody tr td[colspan] {
+    display: block !important;
+    text-align: center !important;
+    border: none !important;
+    padding: 1.5rem 0.5rem !important;
+  }
+
+  .table-responsive>.table tbody tr td[colspan]::before,
+  .fx-table tbody tr td[colspan]::before {
+    display: none !important;
+  }
+
+  /* Action Buttons inside cards */
+  .table-responsive>.table tbody tr td[data-label*="Action"],
+  .table-responsive>.table tbody tr td:last-child,
+  .fx-table tbody tr td:last-child {
+    justify-content: flex-end !important;
+  }
+
+  .table-responsive>.table tbody tr td:last-child .d-flex,
+  .table-responsive>.table tbody tr td:last-child .btn-group,
+  .fx-table tbody tr td:last-child .d-flex {
+    flex-wrap: wrap !important;
+    gap: 0.35rem !important;
+    justify-content: flex-end !important;
+  }
+
+  .table-responsive>.table tbody tr td:last-child .btn,
+  .fx-table tbody tr td:last-child .btn {
+    font-size: 0.75rem !important;
+    padding: 0.22rem 0.55rem !important;
+  }
+}
+
+/* ==========================================================================
+   UI / UX Enhancements: Password Toggle, Validation Feedback & Pagination
+   ========================================================================== */
+
+/* Password Visibility Toggle */
+.fx-password-toggle {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  transition: all 0.15s ease-in-out;
+  border-color: #cbd5e1;
+  background-color: #f8fafc;
+  color: #64748b;
   z-index: 4;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
 }
 
-[data-bs-theme="dark"] .agreements-table-overlay {
-  background: rgba(18, 26, 38, 0.78);
+.fx-password-toggle svg,
+.fx-password-toggle * {
+  pointer-events: none !important;
 }
 
-#agreements-list-card.htmx-request .agreements-table-overlay {
-  opacity: 1;
-  pointer-events: all;
+.fx-password-toggle:hover {
+  background-color: #e2e8f0;
+  color: #1e293b;
+  border-color: #94a3b8;
 }
 
-/* Dim table contents during loading */
-#agreements-list-card.htmx-request #agreements-table,
-#agreements-list-card.htmx-request .pagination {
-  opacity: 0.35;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
+.fx-password-toggle:focus {
+  box-shadow: 0 0 0 0.2rem rgba(11, 31, 58, 0.15);
+  border-color: var(--fx-accent);
+  outline: none;
+}
+
+.input-group .form-control:focus + .fx-password-toggle {
+  border-color: var(--fx-accent);
+}
+
+/* Form Validation UI / UX Enhancements */
+.was-validated .form-control:invalid,
+.form-control.is-invalid,
+.was-validated .form-select:invalid,
+.form-select.is-invalid {
+  border-color: var(--fx-danger) !important;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15);
+}
+
+/* Do not show green borders or checkmark icons on neutral/valid form fields */
+.was-validated .form-control:valid,
+.was-validated .form-select:valid,
+.form-control.is-valid,
+.form-select.is-valid {
+  border-color: var(--fx-border) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.invalid-feedback[data-dynamic-error="1"],
+.invalid-feedback.d-block {
+  font-size: 0.8125rem;
+  color: var(--fx-danger);
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+/* Pagination UI / UX Enhancements */
+.pagination {
+  gap: 3px;
+}
+
+.pagination .page-item .page-link {
+  border-radius: 6px !important;
+  border: 1px solid var(--fx-border);
+  color: var(--fx-text);
+  font-weight: 500;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8125rem;
+  transition: all 0.15s ease-in-out;
+}
+
+.pagination .page-item:not(.disabled):not(.active) .page-link:hover {
+  background-color: var(--fx-accent-soft);
+  border-color: #cbd5e1;
+  color: var(--fx-accent);
+}
+
+.pagination .page-item.active .page-link {
+  background-color: var(--fx-accent) !important;
+  border-color: var(--fx-accent) !important;
+  color: #ffffff !important;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(11, 31, 58, 0.25);
+}
+
+.pagination .page-item.disabled .page-link {
+  background-color: transparent;
+  border-color: var(--fx-border);
+  color: var(--fx-muted);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* --- Enterprise SaaS Design System Improvements (HPE Aligned) --- */
+
+/* Reusable Card & Surface Shadows */
+.card {
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  border: 1px solid var(--fx-border) !important;
+  border-radius: var(--fx-radius);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: #cbd5e1 !important;
+}
+
+/* Professional Data Table Enhancements */
+.fx-data-table {
+  font-size: 0.875rem;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.fx-data-table th {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--fx-border);
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+}
+
+.fx-data-table td {
+  padding: 0.875rem 1rem;
+  color: #1e293b;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.fx-data-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.fx-data-table tbody tr:hover td {
+  background-color: #f8fafc;
+}
+
+/* Status & Priority Indicator Badges */
+.badge {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: 6px;
+  padding: 0.35em 0.65em;
+}
+
+.badge-priority-critical {
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fecaca;
+}
+
+.badge-priority-high {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+  border: 1px solid #fde68a;
+}
+
+.badge-priority-medium {
+  background-color: #f0fdf4 !important;
+  color: #15803d !important;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-priority-low {
+  background-color: #f8fafc !important;
+  color: #64748b !important;
+  border: 1px solid #e2e8f0;
+}
+
+/* Technician Workspace Mobile-First Enhancements */
+.fx-mobile-action-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border-top: 1px solid var(--fx-border);
+  padding: 0.75rem 1rem;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+  z-index: 1020;
+}
+
+.fx-touch-btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border-radius: 8px;
+}
+
+.fx-job-step-card {
+  border-radius: 10px;
+  border: 1px solid var(--fx-border);
+  background: #ffffff;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  transition: border-color 0.2s ease;
+}
+
+.fx-job-step-card.active {
+  border-color: var(--fx-accent);
+  box-shadow: 0 0 0 1px var(--fx-accent);
+}
+
+/* Number Inputs: Remove counter/stepper spin buttons across all browsers */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Modern Form Controls */
+.form-control {
+  border-radius: 6px;
+  border-color: #cbd5e1;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-select {
+  border-radius: 6px;
+  border-color: #cbd5e1;
+  font-size: 0.875rem;
+  padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-select-sm {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  padding-left: 0.65rem;
+  padding-right: 2.25rem;
+  font-size: 0.8125rem;
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: var(--fx-accent);
+  box-shadow: 0 0 0 3px rgba(11, 31, 58, 0.12);
+}
+
+.form-label {
+  color: #334155;
+  font-size: 0.8125rem;
+  margin-bottom: 0.375rem;
+}
+
+/* Detail View Section Headers */
+.fx-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--fx-border);
+}
+
+.fx-section-header h5 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+
+/* Ensure that within any field container, strictly only a single error message is visible */
+div.field-error-message ~ div.field-error-message,
+div.invalid-feedback ~ div.invalid-feedback,
+div.field-error-message ~ div.invalid-feedback,
+div.invalid-feedback ~ div.field-error-message {
+  display: none !important;
 }

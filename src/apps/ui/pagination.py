@@ -1,7 +1,8 @@
 """Unified pagination utilities for FieldOps Nexus dashboards and multi-table views."""
 from __future__ import annotations
 
-from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+from urllib.parse import urlencode
+from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
 
 
 def paginate_dashboard_queryset(request, queryset, page_param: str = "page", per_page: int = 10):

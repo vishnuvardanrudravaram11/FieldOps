@@ -112,9 +112,8 @@ class ServiceRequestWriteSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=200)
 
     def validate_title(self, value):
-        from django.core.exceptions import ValidationError as DjangoValidationError
-
         from apps.ui.forms import validate_incident_title
+        from django.core.exceptions import ValidationError as DjangoValidationError
         try:
             return validate_incident_title(value, field_label="Title")
         except DjangoValidationError as exc:
@@ -163,9 +162,8 @@ class ServiceRequestPatchSerializer(serializers.Serializer):
 
     def validate_title(self, value):
         if value:
-            from django.core.exceptions import ValidationError as DjangoValidationError
-
             from apps.ui.forms import validate_incident_title
+            from django.core.exceptions import ValidationError as DjangoValidationError
             try:
                 return validate_incident_title(value, field_label="Title")
             except DjangoValidationError as exc:
@@ -504,7 +502,17 @@ class ServiceRequestViewSet(TenantAPIMixin, viewsets.ViewSet):
             qs = selectors.comments_for(m, org, sr)
             return Response(ServiceRequestCommentSerializer(qs, many=True).data)
 
-        # POST: create comment
+        # POST: create comment (requires write permission; read-only Auditor cannot post comments)
+        role_keys = set(m.membership_roles.values_list("role__system_key", flat=True)) if m else set()
+        role_names = set(m.membership_roles.values_list("role__name", flat=True)) if m else set()
+        is_auditor = bool(
+            role_keys & {"auditor", "compliance"}
+            or any("auditor" in (r or "").lower() for r in role_names)
+            or (request.user and "auditor" in (request.user.email or "").lower())
+        )
+        if is_auditor:
+            raise PermissionDenied("You do not have permission to perform this action.")
+        require_permission(m, ("incident.update", "incident.attach", "incident.create", "incident.report_owned"), sr.site_id)
         body = request.data.get("body", "")
         is_internal = bool(request.data.get("is_internal", False))
         from apps.ui.utils import is_client_membership

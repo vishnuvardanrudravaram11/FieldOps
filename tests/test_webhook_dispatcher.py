@@ -1,14 +1,12 @@
-from unittest.mock import MagicMock, patch
-
+import json
 import pytest
-
-from apps.core.models import WebhookEndpoint
-from apps.core.outbox import process_pending_events, publish_integration_event
-
+from unittest.mock import patch, MagicMock
+from apps.core.models import WebhookEndpoint, IntegrationEvent
+from apps.core.outbox import publish_integration_event, process_pending_events
 
 @pytest.mark.django_db
 def test_webhook_dispatches_with_hmac_signature(org_a):
-    WebhookEndpoint.objects.create(
+    endpoint = WebhookEndpoint.objects.create(
         organization=org_a,
         name="CRM Webhook",
         target_url="https://crm.example.com/events/",
@@ -23,7 +21,7 @@ def test_webhook_dispatches_with_hmac_signature(org_a):
         mock_resp.__exit__.return_value = None
         mock_url.return_value = mock_resp
 
-        publish_integration_event(
+        event = publish_integration_event(
             org_a,
             event_type="work_order.completed",
             aggregate_type="work_order",
@@ -40,7 +38,7 @@ def test_webhook_dispatches_with_hmac_signature(org_a):
 
 @pytest.mark.django_db
 def test_inactive_webhook_is_not_called(org_a):
-    WebhookEndpoint.objects.create(
+    endpoint = WebhookEndpoint.objects.create(
         organization=org_a,
         name="Inactive Webhook",
         target_url="https://crm.example.com/events/",
@@ -49,7 +47,7 @@ def test_inactive_webhook_is_not_called(org_a):
         is_active=False,
     )
     with patch("urllib.request.urlopen") as mock_url:
-        publish_integration_event(
+        event = publish_integration_event(
             org_a,
             event_type="work_order.completed",
             aggregate_type="work_order",

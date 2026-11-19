@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 
 from django.contrib import messages
-from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
@@ -292,9 +291,9 @@ class ComponentListView(AssetBase):
         total_replaceable = comp_stats["total_replaceable"]
         missing_parts = comp_stats["missing_parts"]
 
-        from apps.assets.health import batch_annotate_assets_health
         from apps.incidents.models import ServiceRequest
         from apps.incidents.workflow import ACTIVE_INCIDENT_STATUSES
+        from apps.assets.health import batch_annotate_assets_health
 
         child_pks = base_qs.values_list("child_id", flat=True)
         breakdown_count = ServiceRequest.objects.filter(

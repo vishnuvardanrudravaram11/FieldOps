@@ -16,12 +16,12 @@ FON-M09 (Spare Parts & Inventory) as mandated by HPE-PRD-2026-FOPS02:
 ================================================================================
 """
 from decimal import Decimal
-
 import pytest
+from django.utils import timezone
 
-from apps.core.exceptions import Conflict, NotFound, ValidationFailed
+from apps.core.exceptions import Conflict, NotFound, PermissionDenied, ValidationFailed
 from apps.inventory import selectors, services
-from apps.inventory.models import StockBalance, StockMovement, WorkOrderPart
+from apps.inventory.models import PartReservation, StockBalance, StockMovement, WorkOrderPart
 from tests.phase3_support import wo_in_progress
 
 pytestmark = pytest.mark.django_db
@@ -324,7 +324,7 @@ def test_site_scoped_stores_manager_can_access_parts_catalog(inv_, client):
     must still have permission to view the spare parts catalog at /app/inventory/parts/.
     Previously, inventory.part.view lacked site_scoped=True, causing a 403 Forbidden error.
     """
-    from apps.rbac.models import MembershipRole, Role
+    from apps.rbac.models import Role, MembershipRole
     from apps.tenancy import selectors as tenancy_selectors
 
     org = inv_["org"]

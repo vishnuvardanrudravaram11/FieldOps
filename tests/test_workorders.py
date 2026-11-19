@@ -425,6 +425,7 @@ def test_database_transition_writes_status_history_and_invalid_transition_is_ato
 
 def test_seed_command_is_explicit_complete_and_idempotent(tmp_path, monkeypatch):
     from django.core.management import call_command
+    from django.core.management.base import CommandError
     from django.test import override_settings
 
 

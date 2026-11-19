@@ -1,14 +1,9 @@
 from datetime import timedelta
-
 from django import forms
 from django.utils import timezone
 
 from apps.assets.models import Asset
-from apps.ui.forms import (
-    BootstrapFormMixin,
-    validate_alphabetical_description,
-    validate_incident_title,
-)
+from apps.ui.forms import BootstrapFormMixin, validate_alphabetical_description, validate_incident_title, validate_title
 
 from .models import ServiceRequest
 

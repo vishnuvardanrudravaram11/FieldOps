@@ -1,7 +1,6 @@
-from datetime import UTC, datetime, time, timedelta
+from datetime import time, timedelta, timezone as dt_timezone, datetime
 from decimal import Decimal
-
-from django.test import Client, TestCase
+from django.test import TestCase, Client
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -9,14 +8,15 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.assets.models import Asset, AssetCategory
 from apps.core.exceptions import ValidationFailed
+from apps.rbac.models import Role, MembershipRole
 from apps.rbac import services as rbac
 from apps.sites.models import Site
 from apps.tenancy import services as tenancy
-from apps.tenancy.models import Membership
-from apps.workorders import services as wo_services
+from apps.tenancy.models import Membership, Organization
 from apps.workorders.models import WorkOrder
-from apps.workspace import services as ws_services
+from apps.workorders import services as wo_services
 from apps.workspace.models import Shift, TechnicianProfile
+from apps.workspace import selectors, services as ws_services
 
 
 class TechnicianProfileAndShiftTests(TestCase):
@@ -178,18 +178,18 @@ class TechnicianProfileAndShiftTests(TestCase):
         ws_services.update_technician_profile(profile, shift=shift)
 
         # Monday 10:00 UTC -> On shift
-        mon_dt = datetime(2026, 11, 2, 10, 0, tzinfo=UTC)
+        mon_dt = datetime(2026, 11, 2, 10, 0, tzinfo=dt_timezone.utc)
         eligible, msg = ws_services.check_technician_shift_eligibility(self.tech_m, mon_dt)
         self.assertTrue(eligible)
 
         # Monday 18:00 UTC -> Outside hours
-        mon_late = datetime(2026, 11, 2, 18, 0, tzinfo=UTC)
+        mon_late = datetime(2026, 11, 2, 18, 0, tzinfo=dt_timezone.utc)
         eligible, msg = ws_services.check_technician_shift_eligibility(self.tech_m, mon_late)
         self.assertFalse(eligible)
         self.assertIn("outside technician shift", msg)
 
         # Saturday 10:00 UTC -> Off day
-        sat_dt = datetime(2026, 11, 7, 10, 0, tzinfo=UTC)
+        sat_dt = datetime(2026, 11, 7, 10, 0, tzinfo=dt_timezone.utc)
         eligible, msg = ws_services.check_technician_shift_eligibility(self.tech_m, sat_dt)
         self.assertFalse(eligible)
         self.assertIn("not scheduled on Sat", msg)

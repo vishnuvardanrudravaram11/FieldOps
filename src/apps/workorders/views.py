@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from apps.core.api import StandardPagination
 from apps.core.apiutils import ID_PARAM, paginate, query_param
-from apps.core.exceptions import ValidationFailed
+from apps.core.exceptions import Conflict, ValidationFailed
 from apps.rbac import services as rbac
 from apps.sites import selectors as site_selectors
 from apps.sites.models import Shift, Site
@@ -59,7 +59,7 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
         "close": "work_order.close", "return_for_rework": "work_order.review",
         "provisional_checklist": "work_order.update", "checklist_reference": "work_order.update", "labor": "work_order.record",
         "materials": "work_order.record", "evidence": "work_order.attach", "notes": "work_order.record",
-        "transition": "work_order.update",
+        "transition": "work_order.update", "cancel": "work_order.cancel",
         "closure": "work_order.view_assigned",
     }
 
@@ -73,8 +73,9 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
                     "hold": "work_order.hold", "resume": "work_order.start",
                     "plan": "work_order.plan", "assign": "work_order.assign",
                     "dispatch": "work_order.dispatch", "submit_for_review": "work_order.complete",
-                    "close": "work_order.close", "return_for_rework": "work_order.review"}.get(sub, "work_order.update")
-        if (action in ("retrieve", "events", "checklist_status", "validate_checklist", "closure") or (action == "materials" and self.request.method == "GET")):
+                    "close": "work_order.close", "return_for_rework": "work_order.review",
+                    "cancel": "work_order.cancel"}.get(sub, "work_order.update")
+        if (action in ("retrieve", "events", "checklist_status", "closure") or (action == "materials" and self.request.method == "GET")):
             m = getattr(self.request, "membership", None)
             if m and rbac.has_permission_anywhere(m, "work_order.view"):
                 return "work_order.view"
@@ -87,13 +88,17 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
         m = self.request.membership
         if not m:
             return WorkOrder.objects.none()
-        qs = WorkOrder.objects.for_organization(m.organization).select_related("site", "assigned_to__user", "created_by")
+        qs = WorkOrder.objects.for_organization(m.organization).select_related(
+            "site", "assigned_to__user", "created_by", "asset", "component"
+        ).prefetch_related("closure_approvals")
         if not rbac.has_permission_anywhere(m, "work_order.view"):
             qs = qs.filter(assigned_to=m)
-        site_ids = [site.pk for site in Site.objects.for_organization(m.organization)
-                    if rbac.has_permission(m, "work_order.view", site) or
-                    rbac.has_permission(m, "work_order.view_assigned", site)]
-        return qs.filter(site_id__in=site_ids)
+        scope = rbac.site_scope(m, "work_order.view")
+        scope_assigned = rbac.site_scope(m, "work_order.view_assigned")
+        if not scope.all_sites and not scope_assigned.all_sites:
+            permitted_site_ids = scope.site_ids | scope_assigned.site_ids
+            qs = qs.filter(site_id__in=permitted_site_ids)
+        return qs
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -106,7 +111,7 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
             return AssignSerializer
         if self.action == "reassign":
             return ReassignSerializer
-        if self.action == "hold":
+        if self.action in ("hold", "cancel"):
             return WorkOrderReasonSerializer
         if self.action in ("close", "return_for_rework"):
             return ClosureCommentSerializer
@@ -280,9 +285,33 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
     def resume(self, request, pk=None):
         return self._action(pk, services.resume_work_order)
 
+    @extend_schema(request=WorkOrderReasonSerializer, responses={200: WorkOrderSerializer})
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        return self._action(pk, services.cancel_work_order, WorkOrderReasonSerializer)
+
+    @extend_schema(
+        request=inline_serializer(
+            "WorkOrderTransitionRequest",
+            fields={
+                "action": serializers.ChoiceField(
+                    choices=[
+                        "complete", "start", "hold", "resume", "plan",
+                        "assign", "reassign", "dispatch", "submit_for_review",
+                        "close", "return_for_rework", "cancel",
+                    ]
+                ),
+                "reason": serializers.CharField(required=False, allow_blank=True),
+                "comment": serializers.CharField(required=False, allow_blank=True),
+                "expected_version": serializers.IntegerField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: WorkOrderSerializer},
+        description="Execute a work order state transition.",
+    )
     @action(detail=True, methods=["post"])
     def transition(self, request, pk=None):
-        self.get_object()
+        wo = self.get_object()
         act = request.data.get("action")
         clean_data = {k: v for k, v in request.data.items() if k != "action"}
         request._full_data = clean_data
@@ -297,7 +326,14 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
             "submit_for_review": self.submit_for_review,
             "close": self.close,
             "return_for_rework": self.return_for_rework,
+            "cancel": self.cancel,
         }
+        if not act:
+            allowed = services.allowed_actions(wo, request.membership)
+            if allowed:
+                act = allowed[0].get("operation")
+            else:
+                return Response(WorkOrderSerializer(wo).data)
         handler = handler_map.get(act)
         if not handler:
             raise ValidationFailed(f"Unsupported transition action: {act}")
@@ -540,14 +576,17 @@ class TechnicianProfileViewSet(TenantAPIMixin, viewsets.ViewSet):
         if "primary_shift" in d:
             d["primary_shift"] = self._resolve_shift(request.organization, d["primary_shift"])
 
-        profile, created = TechnicianProfile.objects.update_or_create(
+        if TechnicianProfile.objects.filter(organization=request.organization, membership=membership).exists():
+            raise Conflict("A technician profile already exists for this member.", code="duplicate_technician_profile")
+
+        profile = TechnicianProfile.objects.create(
             organization=request.organization,
             membership=membership,
-            defaults=d,
+            **d,
         )
         return Response(
             WorkOrderTechnicianProfileSerializer(profile).data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            status=status.HTTP_201_CREATED,
         )
 
     @extend_schema(request=WorkOrderTechnicianProfileUpdateSerializer, responses=WorkOrderTechnicianProfileSerializer)

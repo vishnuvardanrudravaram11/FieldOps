@@ -5,12 +5,7 @@ from django import forms
 from apps.assets.models import Asset
 from apps.incidents.models import ServiceRequest
 from apps.sites.models import Site
-from apps.ui.forms import (
-    BootstrapFormMixin,
-    validate_alphabetical_description,
-    validate_incident_title,
-    validate_phone_number,
-)
+from apps.ui.forms import BootstrapFormMixin, validate_phone_number, validate_alphabetical_description, validate_incident_title, validate_title
 
 
 class _PortalAssetSelect(forms.Select):

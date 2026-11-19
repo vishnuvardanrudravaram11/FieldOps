@@ -1,11 +1,9 @@
 import uuid
-
 from django.conf import settings
 from django.db import models
 from django.db.models.functions import Lower
 
 from apps.core.models import TenantOwnedModel
-
 from .workflow import ACTIVE, STATES
 
 

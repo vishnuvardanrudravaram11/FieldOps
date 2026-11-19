@@ -6,11 +6,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from apps.audit.models import AuditLog
 from apps.core.exceptions import Conflict, ValidationFailed
-from apps.ui.pagination import paginate_dashboard_queryset
 
-from . import services
 from .forms import PlatformOrganizationCreateForm, PlatformOrganizationFilterForm
+from apps.ui.pagination import paginate_dashboard_queryset
 from .models import Organization
+from . import services
 
 
 def platform_admin_required(view):
@@ -192,8 +192,8 @@ def organization_owner_credentials(request, org_id):
         return redirect("platform_admin:organizations")
 
     org = get_object_or_404(Organization, pk=org_id)
-    from apps.audit import services as audit_services
     from apps.tenancy.models import Membership
+    from apps.audit import services as audit_services
 
     owner_m = (
         Membership.objects.unscoped()
@@ -239,7 +239,6 @@ def platform_overview(request):
     audit metrics. Completely isolates tenant-internal operations data (Rule D-008).
     """
     from django.db.models import Q
-
     from apps.tenancy.models import Membership
 
     platform_filter = (

@@ -1,18 +1,17 @@
-from datetime import timedelta
-
 import pytest
-from django.test import Client
+from datetime import timedelta
 from django.utils import timezone
-
+from django.test import Client
+from apps.accounts.models import User
 from apps.rbac import services as rbac
 from apps.rbac.models import Permission, Role, RolePermission
+from apps.sites.models import Site
 from apps.tenancy import services as tenancy
 from apps.tenancy.models import Membership
+from apps.workorders.models import TechnicianProfile as WOTechnicianProfile, WorkOrder
 from apps.workorders import services as wo_services
-from apps.workorders.assignment_rules import available_technicians
 from apps.workorders.forms import AssignForm
-from apps.workorders.models import TechnicianProfile as WOTechnicianProfile
-from apps.workorders.models import WorkOrder
+from apps.workorders.assignment_rules import available_technicians
 from apps.workspace.models import TechnicianProfile as WSTechnicianProfile
 
 
@@ -235,7 +234,7 @@ def test_inactive_user_excluded_from_dropdown(org_a, wo_planned, owner_a):
 def test_workorder_action_assign_page_renders_newly_added_technician(org_a, wo_planned, owner_a):
     wo, dispatcher, start, end = wo_planned
     tech_role = rbac.system_role_by_key(org_a, "technician")
-    _ = tenancy.invite_member(
+    new_tech = tenancy.invite_member(
         org_a,
         email="page_render_tech@alpha.test",
         full_name="Page Render Technician",

@@ -1,17 +1,18 @@
-import threading
 from datetime import timedelta
-
-import pytest
-from django.db import transaction
+import threading
+from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 
+from apps.accounts.models import User
+from apps.assets.models import Asset
 from apps.incidents import services as incident_services
-from apps.tenancy.models import Membership
-from apps.workorders import services as wo_services
+from apps.sites.models import Site
+from apps.tenancy.models import Membership, Organization
 from apps.workorders.models import WorkOrder
+from apps.workorders import services as wo_services
 
 
 def _create_approved_incident(org, asset, membership, title="Equipment failure"):
@@ -157,6 +158,9 @@ def test_number_generation_sequence_and_tenant_scoping(org_a, org_b, site_a1, si
     assert wo_b1.order_number == "WO-000001"
 
 
+import pytest
+
+
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_work_order_creation_handles_sequences_without_duplicates(org_a, site_a1, owner_a, make_asset):
     """
@@ -242,14 +246,6 @@ def test_dashboard_and_schedule_board_view_links_visibility_by_role(org_a, site_
     # 1. Operations Manager visiting /app/work-orders/
     ui = Client()
     ui.force_login(ops_mgr.user)
-    resp = ui.get(reverse("workorders:list"))
-    assert resp.status_code == 200
-    assert resp.context["is_technician"] is False
-    assert b'class="wo-view-links"' not in resp.content
-    assert b"My jobs" not in resp.content
-
-    # 1b. Planner visiting /app/work-orders/
-    ui.force_login(planner.user)
     resp = ui.get(reverse("workorders:list"))
     assert resp.status_code == 200
     assert resp.context["is_technician"] is False

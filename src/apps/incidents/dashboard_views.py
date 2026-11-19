@@ -8,16 +8,19 @@ from django.utils import timezone
 
 from apps.rbac import services as rbac
 from apps.rbac.models import MembershipRole
-from apps.ui.pagination import paginate_dashboard_queryset
 from apps.workorders.models import WorkOrder
+from apps.ui.pagination import paginate_dashboard_queryset
 
 from .models import Downtime, ServiceRequest
 from .workflow import CLOSED, REJECTED
 
+
 ROLE_TITLES = {
     "owner": "Organization Owner",
     "admin": "Organization Owner",
+    "service_dispatcher": "Service Dispatcher",
     "operations_manager": "Operations Manager",
+    "service_dispatcher": "Service Dispatcher",
     "service_dispatcher": "Service Dispatcher",
     "asset_manager": "Asset Manager",
     "maintenance_planner": "Maintenance Planner",
@@ -38,10 +41,10 @@ def _dashboard_context(request, *, platform=False):
         # Rule D-008: Platform admin has no tenant rights and cannot access tenant operational data
         raise PermissionDenied("Platform administrators do not have access to tenant operational data.")
 
-    from apps.assets.models import Asset
     from apps.audit.models import AuditLog
     from apps.incidents import selectors
     from apps.sla.models import SLABreach, SLATracking
+    from apps.assets.models import Asset
 
     membership = request.membership
     organization = request.organization
