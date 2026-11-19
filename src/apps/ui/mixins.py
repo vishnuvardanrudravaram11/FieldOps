@@ -35,12 +35,12 @@ class TenantPermissionMixin(LoginRequiredMixin):
 
         perms = []
         if self.required_permission:
-            if isinstance(self.required_permission, list | tuple):
+            if isinstance(self.required_permission, (list, tuple)):
                 perms.extend(self.required_permission)
             else:
                 perms.append(self.required_permission)
         if getattr(self, "required_permissions", None):
-            if isinstance(self.required_permissions, list | tuple):
+            if isinstance(self.required_permissions, (list, tuple)):
                 perms.extend(self.required_permissions)
             else:
                 perms.append(self.required_permissions)

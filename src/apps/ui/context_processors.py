@@ -649,7 +649,7 @@ def shell(request):
     from django.core.cache import cache
 
     is_owner = rbac.is_owner(membership)
-    nav_cache_key = f"shell_nav_raw:{membership.pk}" if isinstance(getattr(membership, "pk", None), uuid.UUID | int | str) else None
+    nav_cache_key = f"shell_nav_raw:{membership.pk}" if isinstance(getattr(membership, "pk", None), (uuid.UUID, int, str)) else None
     raw_sections = cache.get(nav_cache_key) if nav_cache_key else None
 
     if raw_sections is None:

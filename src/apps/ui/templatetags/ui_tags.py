@@ -150,7 +150,7 @@ def status_badge(value):
 @register.simple_tag
 def component_health_badge(asset, show_icon=True, show_count=True, extra_class=""):
     """Renders a visual component health status badge reflecting active breakdown tickets.
-
+    
     States:
       - HEALTHY: Emerald badge with solid dot (● Healthy)
       - DEGRADED: Amber badge with warning indicator (▲ Degraded)

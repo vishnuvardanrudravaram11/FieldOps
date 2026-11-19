@@ -38,7 +38,7 @@ def is_client_membership(membership) -> bool:
         return False
 
     from unittest.mock import MagicMock, Mock
-    if isinstance(membership, Mock | MagicMock):
+    if isinstance(membership, (Mock, MagicMock)):
         if bool(membership.__dict__.get("is_client_mock") or membership.__dict__.get("_is_client")):
             return True
         if "portal_account" in membership.__dict__ and membership.__dict__["portal_account"] is not None:
