@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand
+
 from apps.assets.models import Asset
 from apps.portal.models import PortalAccount, PortalAssetGrant
 

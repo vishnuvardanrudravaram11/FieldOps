@@ -8,14 +8,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.assets.models import Asset
+from apps.core.api import StandardPagination
 from apps.core.apiutils import paginate
 from apps.core.exceptions import Conflict, DomainError, NotFound, ValidationFailed
 from apps.incidents.models import ServiceRequest
-from apps.tenancy.api import TenantAPIMixin
+from apps.tenancy.api import MEMBER_ONLY, TenantAPIMixin
 from apps.tenancy.models import Membership
 
 from . import selectors, services
-from .models import PortalAccount, PortalAssetGrant, PortalClosureConfirmation
+from .models import PortalAccount, PortalClosureConfirmation
 
 
 class PortalAccountSerializer(serializers.ModelSerializer):
@@ -55,7 +56,7 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
 
     permission_map = {
         "list": "portal.manage",
-        "retrieve": "portal.manage",
+        "retrieve": ("portal.manage", "portal.request.view", MEMBER_ONLY),
         "create": "portal.manage",
         "update": "portal.manage",
         "partial_update": "portal.manage",
@@ -70,6 +71,31 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
             return PortalAccount.objects.none()
         return selectors.accounts_for_organization(org)
 
+    def get_object(self):
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_val = self.kwargs.get(lookup_url_kwarg)
+        if str(lookup_val).lower() == "me" and getattr(self.request, "membership", None):
+            account = PortalAccount.objects.filter(membership=self.request.membership).first()
+            if account:
+                self.check_object_permissions(self.request, account)
+                return account
+
+        queryset = self.filter_queryset(self.get_queryset())
+        import uuid
+
+        from django.db.models import Q
+        try:
+            val_uuid = uuid.UUID(str(lookup_val))
+            obj = queryset.filter(
+                Q(pk=val_uuid) | Q(membership_id=val_uuid) | Q(membership__user_id=val_uuid)
+            ).first()
+            if obj is not None:
+                self.check_object_permissions(self.request, obj)
+                return obj
+        except (ValueError, TypeError):
+            pass
+        return super().get_object()
+
     def create(self, request, *args, **kwargs):
         write_serializer = PortalAccountCreateSerializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
@@ -78,7 +104,7 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
         mem_id = data["membership"]
         membership = Membership.objects.for_organization(request.organization).filter(pk=mem_id).first()
         if not membership:
-            return Response({"membership": ["Membership not found in this organization."]}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationFailed("Membership not found in this organization.")
 
         try:
             account = services.create_portal_account(
@@ -90,10 +116,19 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
                 actor=request.user,
             )
         except DomainError as exc:
-            return Response({"detail": exc.message}, status=status.HTTP_409_CONFLICT)
+            from apps.core.api import _envelope
+            code = getattr(exc, "code", "conflict")
+            return Response(_envelope(code, exc.message), status=status.HTTP_409_CONFLICT)
 
         read_serializer = PortalAccountSerializer(account)
         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_destroy(self, instance):
+        from django.db.models.deletion import ProtectedError
+        try:
+            instance.delete()
+        except ProtectedError as exc:
+            raise Conflict("Cannot delete portal account because it has associated history or confirmations.", code="portal_account_in_use") from exc
 
     def perform_update(self, serializer):
         data = serializer.validated_data
@@ -107,12 +142,37 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
         )
 
     @extend_schema(request=None)
-    @extend_schema(request=None)
     @action(detail=True, methods=["post"])
     def toggle(self, request, pk=None):
         account = self.get_object()
         updated = services.toggle_portal_account(account, actor=request.user)
         return Response(PortalAccountSerializer(updated).data)
+
+
+class PortalMeUserSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    email = serializers.EmailField()
+    full_name = serializers.CharField()
+
+
+class PortalMeOrgSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    slug = serializers.CharField()
+
+
+class PortalMeSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    membership = serializers.UUIDField()
+    membership_status = serializers.CharField()
+    company_name = serializers.CharField()
+    is_enabled = serializers.BooleanField()
+    created_at = serializers.DateTimeField(allow_null=True)
+    updated_at = serializers.DateTimeField(allow_null=True, required=False)
+    user_email = serializers.EmailField(required=False)
+    user_name = serializers.CharField(required=False)
+    user = PortalMeUserSerializer(required=False)
+    organization = PortalMeOrgSerializer(required=False)
 
 
 class PortalMeView(TenantAPIMixin, APIView):
@@ -123,7 +183,7 @@ class PortalMeView(TenantAPIMixin, APIView):
     }
 
     @extend_schema(
-        responses={200: PortalAccountSerializer},
+        responses={200: PortalMeSerializer},
         summary="Get client portal profile",
         description="Returns portal account details for the authenticated client in the active tenant organization.",
     )
@@ -140,6 +200,9 @@ class PortalMeView(TenantAPIMixin, APIView):
             "company_name": account.company_name or request.organization.name,
             "is_enabled": account.is_enabled,
             "created_at": account.created_at.isoformat() if account.created_at else None,
+            "updated_at": account.updated_at.isoformat() if getattr(account, "updated_at", None) else None,
+            "user_email": request.user.email,
+            "user_name": request.user.full_name,
             "user": {
                 "id": str(request.user.pk),
                 "email": request.user.email,
@@ -180,6 +243,7 @@ class PortalAssetSerializer(serializers.ModelSerializer):
 class PortalAssetListView(TenantAPIMixin, APIView):
     """Client / Requester endpoint to list equipment assets explicitly granted to the client account."""
 
+    pagination_class = StandardPagination
     permission_map = {
         "get": "portal.request.view",
     }
@@ -336,6 +400,7 @@ class PortalServiceRequestDetailSerializer(PortalServiceRequestSerializer):
     attachments = serializers.SerializerMethodField()
     closure_confirmation = serializers.SerializerMethodField()
     is_eligible_for_confirmation = serializers.SerializerMethodField()
+    pending_closure_conditions = serializers.SerializerMethodField()
     work_order = serializers.SerializerMethodField()
 
     class Meta(PortalServiceRequestSerializer.Meta):
@@ -344,9 +409,19 @@ class PortalServiceRequestDetailSerializer(PortalServiceRequestSerializer):
             "attachments",
             "closure_confirmation",
             "is_eligible_for_confirmation",
+            "pending_closure_conditions",
             "work_order",
         ]
         read_only_fields = fields
+
+    def get_pending_closure_conditions(self, obj) -> list[str]:
+        if obj.status == ServiceRequest.Status.CONFIRMED:
+            return services.get_request_closure_blockers(obj)
+        return []
+
+    # work_order is a SerializerMethodField documented as nullable, so it is always
+    # present in the response (null while no work order is linked) and the payload
+    # matches the OpenAPI schema. Consumers should treat null as "not linked yet".
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_history(self, obj):
@@ -436,6 +511,7 @@ class PortalRequestListCreateView(TenantAPIMixin, APIView):
     POST: Submits a new client service request.
     """
 
+    pagination_class = StandardPagination
     parser_classes = [parsers.JSONParser, parsers.FormParser, parsers.MultiPartParser]
     permission_map = {
         "get": "portal.request.view",
@@ -544,10 +620,7 @@ class PortalRequestDetailView(TenantAPIMixin, APIView):
 
         sr = selectors.get_client_request(request.membership, pk)
         if sr is None:
-            return Response(
-                {"detail": "Service request not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NotFound("Service request not found.")
 
         serializer = PortalServiceRequestDetailSerializer(sr)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -677,6 +750,12 @@ class PortalRequestReopenView(TenantAPIMixin, APIView):
             services.verify_portal_access(request.membership)
         except DomainError as exc:
             raise DRFPermissionDenied(str(exc)) from exc
+
+        if not selectors.get_client_request(request.membership, pk):
+            from apps.core.api import _envelope
+            data = _envelope("not_found", "Service request not found.")
+            data.update({"detail": "Service request not found.", "code": "not_found"})
+            return Response(data, status=status.HTTP_404_NOT_FOUND)
 
         serializer = PortalRequestReopenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

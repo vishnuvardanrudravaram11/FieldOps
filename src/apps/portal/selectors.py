@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
+
 from django.db.models import QuerySet
 
 from apps.tenancy.models import Membership, Organization
+
 from .models import PortalAccount
+
+if TYPE_CHECKING:
+    from apps.incidents.models import ServiceRequest, ServiceRequestHistory
 
 
 STAGE_MAP = {
@@ -14,7 +20,7 @@ STAGE_MAP = {
     "WORK_ORDER_CREATED": "IN_PROGRESS",
     "IN_SERVICE": "IN_PROGRESS",
     "RESOLVED": "RESOLVED",
-    "CONFIRMED": "RESOLVED",
+    "CONFIRMED": "CONFIRMED",
     "CLOSED": "CLOSED",
     "REJECTED": "REJECTED",
 }
@@ -61,7 +67,8 @@ def get_portal_account(membership: Membership | None) -> PortalAccount | None:
     """Returns the portal account for the given membership, if any."""
     if membership is None:
         return None
-    return PortalAccount.objects.for_organization(membership.organization).filter(
+    return PortalAccount.objects.for_organization(membership.organization_id).filter(
+        organization_id=membership.organization_id,
         membership=membership,
     ).select_related("membership", "membership__user", "organization").first()
 
@@ -122,12 +129,23 @@ def get_client_request(membership: Membership | None, request_id: str | uuid.UUI
     return qs.filter(number=str(request_id).strip()).first()
 
 
+_INTERNAL_HISTORY_ACTIONS = (
+    "work_order_update",
+    "work_order_updated",
+    "work_order_labor",
+    "work_order_material",
+    "work_order_evidence",
+    "work_order_checklist",
+)
+
+
 def client_request_history_for(sr: ServiceRequest) -> QuerySet[ServiceRequestHistory]:
     """Returns the append-only status history for a service request in chronological order."""
     from apps.incidents.models import ServiceRequestHistory
     return (
         ServiceRequestHistory.objects.for_organization(sr.organization)
         .filter(request=sr)
+        .exclude(action__in=_INTERNAL_HISTORY_ACTIONS)
         .order_by("created_at")
     )
 
@@ -141,6 +159,9 @@ def granted_assets_for(membership: Membership | None):
     if account is None or not account.is_enabled or not membership.is_active:
         from apps.assets.models import Asset
         return Asset.objects.none()
+    if account.auto_grant_assets:
+        from .services import sync_portal_grants_for_account
+        sync_portal_grants_for_account(account)
     from apps.assets.models import Asset
     return (
         Asset.objects.for_organization(membership.organization)
@@ -198,6 +219,7 @@ def get_portal_dashboard_metrics(membership: Membership | None) -> dict:
         }
 
     from django.db.models import Avg, Count, Q
+
     from apps.incidents.models import ServiceRequest, ServiceRequestHistory
     from apps.portal.models import PortalClosureConfirmation
 
@@ -226,6 +248,7 @@ def get_portal_dashboard_metrics(membership: Membership | None) -> dict:
     recent_activity = list(
         ServiceRequestHistory.objects.for_organization(org)
         .filter(request__reported_by=membership)
+        .exclude(action__in=_INTERNAL_HISTORY_ACTIONS)
         .select_related("request", "changed_by")
         .order_by("-created_at")[:6]
     )
