@@ -24,15 +24,15 @@ class Migration(migrations.Migration):
                     BEGIN
                         -- 1. If legacy 'number' column does not exist (fresh db), add it as nullable
                         IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
+                            SELECT 1 FROM information_schema.columns 
                             WHERE table_name = 'workorders_workorder' AND column_name = 'number'
                         ) THEN
                             ALTER TABLE workorders_workorder ADD COLUMN number VARCHAR(32) NULL;
                         ELSE
                             -- 2. Detect conflicting business identifiers between 'number' and 'order_number'
                             IF EXISTS (
-                                SELECT 1 FROM workorders_workorder
-                                WHERE number IS NOT NULL AND order_number IS NOT NULL
+                                SELECT 1 FROM workorders_workorder 
+                                WHERE number IS NOT NULL AND order_number IS NOT NULL 
                                   AND number <> '' AND order_number <> ''
                                   AND number <> order_number
                             ) THEN
@@ -40,12 +40,12 @@ class Migration(migrations.Migration):
                             END IF;
 
                             -- 3. Populate missing values bidirectionally
-                            UPDATE workorders_workorder
-                            SET order_number = number
+                            UPDATE workorders_workorder 
+                            SET order_number = number 
                             WHERE (order_number IS NULL OR order_number = '') AND number IS NOT NULL;
 
-                            UPDATE workorders_workorder
-                            SET number = order_number
+                            UPDATE workorders_workorder 
+                            SET number = order_number 
                             WHERE (number IS NULL OR number = '') AND order_number IS NOT NULL;
 
                             -- 4. Drop NOT NULL on legacy 'number' column
@@ -64,7 +64,7 @@ class Migration(migrations.Migration):
                         ) AND NOT EXISTS (
                             SELECT 1 FROM pg_indexes WHERE indexname = 'uniq_wo_number_org'
                         ) THEN
-                            ALTER TABLE workorders_workorder
+                            ALTER TABLE workorders_workorder 
                             ADD CONSTRAINT uniq_wo_number_org UNIQUE (organization_id, order_number);
                         END IF;
                     END $$;

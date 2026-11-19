@@ -11,7 +11,6 @@ from rest_framework.response import Response
 
 from apps.core.api import StandardPagination
 from apps.core.apiutils import ID_PARAM, paginate, query_param, require_permission
-from apps.core.exceptions import PermissionDenied as DomainPermissionDenied
 from apps.rbac import services as rbac
 from apps.sites import selectors as site_selectors
 from apps.tenancy.api import TenantAPIMixin

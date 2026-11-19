@@ -2,13 +2,12 @@
 Requested parts by technician in Field Dashboard do not reflect in Stores/Inventory Dashboard.
 """
 from decimal import Decimal
-
 import pytest
 from django.test import Client
 from django.urls import reverse
 
-from apps.inventory import selectors as inv_selectors
 from apps.inventory import services as inv_services
+from apps.inventory import selectors as inv_selectors
 from apps.inventory.models import WorkOrderPart
 from tests.phase3_support import wo_in_progress
 
@@ -19,7 +18,7 @@ def test_bug_003_technician_part_request_syncs_to_stores_dashboard_and_queue(inv
     org = inv_["org"]
     tech = inv_["tech"]
     stores = inv_["stores"]
-    _ = inv_["wh"]
+    wh = inv_["wh"]
 
     # 1. Create part PRT-8842-FLT as described in Bug-003
     part = inv_services.create_part(

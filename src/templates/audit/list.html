@@ -7,6 +7,12 @@
 <!-- Dashboard Hero Header -->
 <div class="fx-page-header d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
   <div>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb mb-1 small">
+        <li class="breadcrumb-item"><a href="{% url 'ui:home' %}">Overview</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Audit &amp; Compliance Dashboard</li>
+      </ol>
+    </nav>
     <div class="d-flex align-items-center gap-2 mb-1">
       <h1 class="h3 fw-bold mb-0">Audit &amp; Compliance Dashboard</h1>
       <span class="badge bg-success-subtle text-success border border-success-subtle small">
@@ -18,6 +24,9 @@
     </div>
   </div>
   <div class="d-flex gap-2 flex-wrap align-items-center">
+    <a class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1" href="{% url 'ui:home' %}" data-action="go-back" data-fallback="{% url 'ui:home' %}">
+      {% icon 'arrow-left' 14 %} Back to Overview
+    </a>
     <a class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1" href="{% url 'audit:reports' %}">
       {% icon 'list-check' 14 %} Compliance reports
     </a>
@@ -31,9 +40,10 @@
       </button>
       <ul class="dropdown-menu dropdown-menu-end shadow-sm">
         <li><h6 class="dropdown-header">Export Current View</h6></li>
-        <li><a class="dropdown-item" href="{% url 'audit:export' %}?{{ query }}&amp;format=csv">CSV Spreadsheet</a></li>
-        <li><a class="dropdown-item" href="{% url 'audit:export' %}?{{ query }}&amp;format=xlsx">Excel Workbook (XLSX)</a></li>
-        <li><a class="dropdown-item" href="{% url 'audit:export' %}?{{ query }}&amp;format=pdf">PDF Audit Report</a></li>
+        <li><a class="dropdown-item" href="{% url 'audit:export' %}?{{ query }}&amp;format=csv" download>CSV Spreadsheet</a></li>
+        <li><a class="dropdown-item" href="{% url 'audit:export' %}?{{ query }}&amp;format=xlsx" download>Excel Workbook (XLSX)</a></li>
+        <li><a class="dropdown-item" href="{% url 'audit:export' %}?{{ query }}&amp;format=pdf" download>PDF Audit Report</a></li>
+        <li><a class="dropdown-item" href="{% url 'audit:export' %}?{{ query }}&amp;format=zip" download>ZIP Archive (Evidence Manifest)</a></li>
         <li><hr class="dropdown-divider"></li>
         <li><span class="dropdown-item-text small text-body-secondary">Max {{ total_hint }} rows per export (newest first)</span></li>
       </ul>
@@ -233,16 +243,16 @@
         <label class="form-label small fw-semibold text-body-secondary mb-1">Module</label>
         <select class="form-select form-select-sm" name="module" aria-label="Module">
           <option value="">All Modules</option>
-          <option value="workorders" {% if filters.module == "workorders" %}selected{% endif %}>Work Orders (M06/M07)</option>
-          <option value="assets" {% if filters.module == "assets" %}selected{% endif %}>Assets (M02/M03)</option>
-          <option value="incidents" {% if filters.module == "incidents" %}selected{% endif %}>Incidents &amp; Requests (M05)</option>
-          <option value="checklists" {% if filters.module == "checklists" %}selected{% endif %}>Checklists &amp; Inspections (M08)</option>
-          <option value="inventory" {% if filters.module == "inventory" %}selected{% endif %}>Inventory &amp; Stock (M09)</option>
-          <option value="contracts" {% if filters.module == "contracts" %}selected{% endif %}>Contracts &amp; Warranty (M10)</option>
-          <option value="sla" {% if filters.module == "sla" %}selected{% endif %}>SLA Management (M11)</option>
-          <option value="portal" {% if filters.module == "portal" %}selected{% endif %}>Client Portal (M13)</option>
+          <option value="workorders" {% if filters.module == "workorders" %}selected{% endif %}>Work Orders</option>
+          <option value="assets" {% if filters.module == "assets" %}selected{% endif %}>Assets</option>
+          <option value="incidents" {% if filters.module == "incidents" %}selected{% endif %}>Incidents &amp; Requests</option>
+          <option value="checklists" {% if filters.module == "checklists" %}selected{% endif %}>Checklists &amp; Inspections</option>
+          <option value="inventory" {% if filters.module == "inventory" %}selected{% endif %}>Inventory &amp; Stock</option>
+          <option value="contracts" {% if filters.module == "contracts" %}selected{% endif %}>Contracts &amp; Warranty</option>
+          <option value="sla" {% if filters.module == "sla" %}selected{% endif %}>SLA Management</option>
+          <option value="portal" {% if filters.module == "portal" %}selected{% endif %}>Client Portal</option>
           <option value="security" {% if filters.module == "security" %}selected{% endif %}>Security &amp; RBAC</option>
-          <option value="audit" {% if filters.module == "audit" %}selected{% endif %}>Audit &amp; Evidence (M15)</option>
+          <option value="audit" {% if filters.module == "audit" %}selected{% endif %}>Audit &amp; Evidence</option>
         </select>
       </div>
       <div class="col-6 col-md-2">
@@ -299,8 +309,7 @@
       {% if filters.work_order %}<input type="hidden" name="work_order" value="{{ filters.work_order }}">{% endif %}
 
       <div class="col-12 col-md-2 d-flex align-items-end gap-2">
-        <button type="submit" class="btn btn-sm btn-primary flex-fill">Apply Filter</button>
-        <a class="btn btn-sm btn-outline-secondary" href="?">Reset</a>
+        <a class="btn btn-sm btn-outline-secondary flex-fill" href="?">Reset</a>
       </div>
     </form>
   </div>
@@ -378,39 +387,5 @@
   </div>
 </div>
 
-<!-- Evidence Package Quick Download -->
-<div class="row g-3 mt-4" id="evidence-generator">
-  <div class="col-12 col-lg-6">
-    <div class="fx-card p-3 shadow-sm h-100">
-      <div class="d-flex align-items-center gap-2 mb-2">
-        {% icon 'package' 20 %}
-        <h6 class="fw-bold mb-0">Work Order Evidence Package Generator (ZIP)</h6>
-      </div>
-      <p class="small text-body-secondary mb-3">
-        Compiles the complete audit-ready evidentiary archive for any work order: lifecycle timeline, checklist answers &amp; findings, labor/material logs, SLA tracking, attached files, and SHA-256 checksum manifest.
-      </p>
-      <form id="evidence-form" onsubmit="event.preventDefault(); var id=document.getElementById('wo-evidence-id').value.trim(); if(id){ window.location.href='/app/audit/evidence/work-order/' + id + '/'; }" class="d-flex gap-2">
-        <input type="text" id="wo-evidence-id" class="form-control form-control-sm" placeholder="Work Order UUID (e.g. b8f...)" required aria-label="Work Order UUID">
-        <button type="submit" class="btn btn-sm btn-outline-primary text-nowrap">Download ZIP Archive</button>
-      </form>
-    </div>
-  </div>
 
-  <div class="col-12 col-lg-6">
-    <div class="fx-card p-3 shadow-sm h-100">
-      <div class="d-flex align-items-center gap-2 mb-2">
-        {% icon 'shield' 20 %}
-        <h6 class="fw-bold mb-0">Immutability &amp; Tamper Protection Verification</h6>
-      </div>
-      <p class="small text-body-secondary mb-2">
-        Audit records in FieldOps Nexus are strictly append-only. UPDATE and DELETE statements are rejected at both the Django ORM layer and through PostgreSQL database-level triggers.
-      </p>
-      <div class="d-flex gap-2 flex-wrap mt-3">
-        <span class="badge bg-light text-dark border">Trigger: audit_immutable_trigger</span>
-        <span class="badge bg-light text-dark border">Isolation: Multi-Tenant TenantQuerySet</span>
-        <span class="badge bg-light text-dark border">Hashing: SHA-256 File Manifests</span>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}

@@ -16,7 +16,7 @@ from django.db import connection, transaction
 from apps.audit import services as audit
 from apps.core.exceptions import Conflict, ValidationFailed
 
-from .health import annotate_tree_health
+from .health import annotate_tree_health, batch_annotate_assets_health, get_asset_health
 from .models import Asset, AssetComponent
 from .workflow import TERMINAL_STATES
 

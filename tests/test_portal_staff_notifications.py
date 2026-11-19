@@ -9,13 +9,14 @@ Query MembershipRole with membership__is_active=True, but Membership has no is_a
 resulting in internal staff never receiving notifications when requests are submitted or reopened by clients.
 """
 import pytest
-
 from apps.incidents import services as incident_services
 from apps.incidents.models import ServiceRequest
 from apps.notifications.models import Notification
 from apps.portal import services as portal_services
 from apps.portal.models import PortalAccount, PortalAssetGrant
 from apps.rbac import services as rbac
+from apps.tenancy.models import Membership
+from apps.workorders.models import WorkOrder
 
 pytestmark = pytest.mark.django_db
 
@@ -62,7 +63,7 @@ def test_reopen_portal_service_request_notifies_staff(org_a, site_a1, make_asset
 
     # 3. Work order created and resolved
     planner = make_member(org_a, "planner.d4@test.com", "maintenance_planner")
-    incident_services.create_work_order_for_request(
+    wo = incident_services.create_work_order_for_request(
         sr,
         actor=planner.user,
         membership=planner,
@@ -165,7 +166,7 @@ def test_submit_request_does_not_notify_inactive_or_unauthorized_staff(org_a, si
 
     Notification.objects.filter(organization=org_a).delete()
 
-    portal_services.create_portal_service_request(
+    sr = portal_services.create_portal_service_request(
         client_mem,
         asset=asset,
         title="HVAC cooling leak",

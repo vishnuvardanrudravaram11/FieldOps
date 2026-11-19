@@ -32,6 +32,7 @@ class ClientIPScopedRateThrottle(ScopedRateThrottle):
 
     def get_rate(self):
         from django.conf import settings
+        from rest_framework.settings import api_settings
 
         rf_settings = getattr(settings, "REST_FRAMEWORK", {})
         rates = rf_settings.get("DEFAULT_THROTTLE_RATES") or api_settings.DEFAULT_THROTTLE_RATES or {}

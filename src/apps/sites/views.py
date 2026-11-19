@@ -13,6 +13,11 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.views import View
 
+def htmx_success(trigger_data: dict) -> HttpResponse:
+    response = HttpResponse(status=204)
+    response["HX-Trigger"] = json.dumps(trigger_data)
+    return response
+
 from apps.core.exceptions import DomainError, NotFound
 from apps.rbac import services as rbac
 from apps.ui.forms import ReasonForm
@@ -21,12 +26,6 @@ from apps.ui.mixins import TenantPermissionMixin
 from . import selectors, services
 from .forms import CalendarForm, ContactForm, HolidayForm, SiteForm, ZoneForm
 from .models import CalendarHoliday
-
-
-def htmx_success(trigger_data: dict) -> HttpResponse:
-    response = HttpResponse(status=204)
-    response["HX-Trigger"] = json.dumps(trigger_data)
-    return response
 
 TABS = [("overview", "Overview"), ("locations", "Locations"), ("calendars", "Calendars"),
         ("contacts", "Contacts"), ("assets", "Assets")]

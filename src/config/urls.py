@@ -1,8 +1,8 @@
-from django.shortcuts import redirect
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import include, path, re_path
-from django.views import View
 from django.views.generic import RedirectView
-from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from rest_framework.routers import SimpleRouter
 
 from apps.assets.api_views import (
@@ -25,7 +25,6 @@ from apps.contracts.api_views import (
 )
 from apps.core import health
 from apps.core.api_views import IntegrationEventViewSet, WebhookEndpointViewSet
-from apps.files.views import protected_media_serve
 from apps.identification.api_views import IdentifierViewSet
 from apps.incidents.api_views import ServiceRequestViewSet
 from apps.inventory.api_views import (
@@ -59,14 +58,8 @@ from apps.sla.api_views import (
     SLAProfileViewSet,
     SLATrackingViewSet,
 )
-from apps.tenancy.api_views import (
-    MemberViewSet,
-    OrganizationViewSet,
-    PlatformOrganizationViewSet,
-    PlatformUserViewSet,
-)
+from apps.tenancy.api_views import MemberViewSet, OrganizationViewSet, PlatformOrganizationViewSet, PlatformUserViewSet
 from apps.workorders.views import TechnicianProfileViewSet, WorkOrderViewSet
-
 
 # Module teams: import your viewsets here and register them on the router.
 class OptionalSlashRouter(SimpleRouter):
@@ -143,7 +136,7 @@ api_v1 = [
          name="platform-organizations-list"),
     re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/?$", PlatformOrganizationViewSet.as_view({"get": "retrieve", "delete": "destroy"}),
          name="platform-organizations-detail"),
-    re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/status/?$", PlatformOrganizationViewSet.as_view({"post": "set_status"}),
+    re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/(?:set_status|status)/?$", PlatformOrganizationViewSet.as_view({"post": "set_status"}),
          name="platform-organizations-status"),
     re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/users/?$", PlatformOrganizationViewSet.as_view({"post": "create_user"}),
          name="platform-organizations-users"),
@@ -174,6 +167,9 @@ def _api_v1_not_found(request, *args, **kwargs):
 
 api_v1.append(re_path(r"^.*$", _api_v1_not_found))
 
+
+from django.views import View
+from django.shortcuts import redirect
 
 class AdminLandingRedirectView(View):
     """Graceful landing for /admin/ preventing dead-ends or login loops."""
@@ -236,6 +232,7 @@ urlpatterns = [
     path("", include("apps.ui.urls")),
 ]
 
+from apps.files.views import protected_media_serve
 urlpatterns += [
     re_path(r"^media/(?P<path>.*)$", protected_media_serve),
 ]

@@ -4,11 +4,12 @@ generate / enable / disable buttons post to endpoints that call the services (no
 from __future__ import annotations
 
 import logging
-
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import IntegrityError
+
+logger = logging.getLogger(__name__)
 from django.shortcuts import redirect, render
 from django.views import View
 
@@ -18,14 +19,12 @@ from apps.checklists.models import ChecklistTemplate
 from apps.core.exceptions import DomainError
 from apps.rbac import services as rbac
 from apps.sites import selectors as site_selectors
-from apps.sites.views import need, or404
+from apps.sites.views import form_page, need, or404
 from apps.ui.mixins import TenantPermissionMixin
 
 from . import selectors, services
 from .forms import PlanForm, ScheduleForm
 from .models import MaintenanceSchedule
-
-logger = logging.getLogger(__name__)
 
 
 class PmBase(TenantPermissionMixin, View):
@@ -119,7 +118,7 @@ class PlanCreateView(PmBase):
                 form.add_error(None, exc.message)
             except PermissionDenied:
                 form.add_error(None, "You do not have permission to create a maintenance plan for this asset's site.")
-            except IntegrityError:
+            except IntegrityError as exc:
                 form.add_error(None, "A plan with this name already exists for this asset or a database conflict occurred.")
             except Exception as exc:
                 logger.exception("Error creating maintenance plan: %s", exc)

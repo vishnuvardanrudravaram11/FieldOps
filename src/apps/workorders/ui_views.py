@@ -26,6 +26,8 @@ from apps.ui.utils import TECHNICIAN_ROLE_KEYS, is_technician_membership
 from . import services
 from .assignment_rules import available_technicians, schedule_warnings
 from .checklist_adapter import get_checklist_summary
+
+logger = logging.getLogger(__name__)
 from .forms import (
     AssignForm,
     ChecklistForm,
@@ -43,8 +45,6 @@ from .forms import (
     WorkUpdateForm,
 )
 from .models import WorkOrder, WorkOrderAssignment
-
-logger = logging.getLogger(__name__)
 
 
 def _site_zone(site):
@@ -1260,52 +1260,38 @@ class WorkOrderActionView(TenantPermissionMixin, View):
                     assignee_id=data["assigned_to"].pk, scheduled_start=data.get("scheduled_start"),
                     scheduled_end=data.get("scheduled_end"), reason=data.get("reason", ""),
                     expected_version=expected_version, request=request)
-            elif self.operation == "dispatch":
-                result = services.dispatch_work_order(wo, membership=request.membership, actor=request.user, expected_version=expected_version, request=request)
-            elif self.operation == "start":
-                result = services.start_work_order(wo, membership=request.membership, actor=request.user, expected_version=expected_version, request=request)
-            elif self.operation == "hold":
-                result = services.hold_work_order(wo, membership=request.membership, actor=request.user, reason=data["reason"], expected_version=expected_version, request=request)
-            elif self.operation == "resume":
-                result = services.resume_work_order(wo, membership=request.membership, actor=request.user, expected_version=expected_version, request=request)
-            elif self.operation == "complete":
-                result = services.complete_work_order(wo, membership=request.membership,
-                    actor=request.user, resolution_notes=data["resolution_notes"],
-                    expected_version=expected_version, request=request)
-            elif self.operation == "submit_for_review":
-                result = services.submit_for_review(
-                    wo, membership=request.membership, actor=request.user, expected_version=expected_version, request=request)
-            elif self.operation == "review":
-                result = services.review_work_order(wo, membership=request.membership,
-                    actor=request.user, approved=data["approved"], notes=data["notes"],
-                    expected_version=expected_version, request=request)
-            elif self.operation == "close":
-                result = services.close_work_order(
-                    wo, membership=request.membership, actor=request.user, comment=data["comment"],
-                    expected_version=expected_version, request=request)
-            elif self.operation == "return_for_rework":
-                result = services.return_for_rework(
-                    wo, membership=request.membership, actor=request.user, comment=data["comment"],
-                    expected_version=expected_version, request=request)
-            elif self.operation == "checklist":
-                result = services.set_checklist(wo, membership=request.membership,
-                    actor=request.user, items=data["items"], request=request)
-            elif self.operation == "labor":
-                result = services.record_labor(wo, membership=request.membership,
-                    actor=request.user, request=request, **data)
-            elif self.operation == "work_update":
-                result = services.record_work_update(
-                    wo, membership=request.membership, actor=request.user, update=data["update"], request=request)
-            elif self.operation == "materials":
-                result = services.record_material(wo, membership=request.membership,
-                    actor=request.user, request=request, **data)
+            elif self.operation == "dispatch": result = services.dispatch_work_order(wo, membership=request.membership, actor=request.user, expected_version=expected_version, request=request)
+            elif self.operation == "start": result = services.start_work_order(wo, membership=request.membership, actor=request.user, expected_version=expected_version, request=request)
+            elif self.operation == "hold": result = services.hold_work_order(wo, membership=request.membership, actor=request.user, reason=data["reason"], expected_version=expected_version, request=request)
+            elif self.operation == "resume": result = services.resume_work_order(wo, membership=request.membership, actor=request.user, expected_version=expected_version, request=request)
+            elif self.operation == "complete": result = services.complete_work_order(wo, membership=request.membership,
+                actor=request.user, resolution_notes=data["resolution_notes"],
+                expected_version=expected_version, request=request)
+            elif self.operation == "submit_for_review": result = services.submit_for_review(
+                wo, membership=request.membership, actor=request.user, expected_version=expected_version, request=request)
+            elif self.operation == "review": result = services.review_work_order(wo, membership=request.membership,
+                actor=request.user, approved=data["approved"], notes=data["notes"],
+                expected_version=expected_version, request=request)
+            elif self.operation == "close": result = services.close_work_order(
+                wo, membership=request.membership, actor=request.user, comment=data["comment"],
+                expected_version=expected_version, request=request)
+            elif self.operation == "return_for_rework": result = services.return_for_rework(
+                wo, membership=request.membership, actor=request.user, comment=data["comment"],
+                expected_version=expected_version, request=request)
+            elif self.operation == "checklist": result = services.set_checklist(wo, membership=request.membership,
+                actor=request.user, items=data["items"], request=request)
+            elif self.operation == "labor": result = services.record_labor(wo, membership=request.membership,
+                actor=request.user, request=request, **data)
+            elif self.operation == "work_update": result = services.record_work_update(
+                wo, membership=request.membership, actor=request.user, update=data["update"], request=request)
+            elif self.operation == "materials": result = services.record_material(wo, membership=request.membership,
+                actor=request.user, request=request, **data)
             elif self.operation == "evidence":
                 att = file_services.attach(request.FILES["file"], target=wo, organization=request.organization,
                     user=request.user, description=data.get("description", ""), read_permission="work_order.view", request=request)
                 result = services.add_evidence(wo, membership=request.membership, actor=request.user,
                     attachment_id=att.pk, request=request)
-            else:
-                raise Http404
+            else: raise Http404
         except DomainError as exc:
             if request.headers.get("HX-Request"):
                 response = HttpResponse("")

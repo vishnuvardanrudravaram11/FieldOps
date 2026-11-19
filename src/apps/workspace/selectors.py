@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-
 from django.db.models import QuerySet
 
 from apps.sites.models import SiteContact
@@ -177,7 +176,6 @@ def get_job_detail(membership: Membership, pk: str) -> dict:
     """Retrieve full job detail including route, checklists, logs, notes, meters, and actions."""
     from apps.core.exceptions import NotFound
     from apps.workorders import services as wo_services
-
     from .services import assert_can_execute_job, get_drawer_summary
 
     wo = WorkOrder.objects.for_organization(membership.organization).select_related(
@@ -251,9 +249,7 @@ def get_job_detail(membership: Membership, pk: str) -> dict:
 def get_job_completion_context(membership: Membership, pk: str) -> dict:
     """Retrieve structured summary context for job completion and customer digital sign-off."""
     from decimal import Decimal
-
     from apps.core.exceptions import NotFound
-
     from .services import assert_can_execute_job
 
     wo = (
@@ -351,10 +347,8 @@ def daily_capacity_summary(
 ) -> dict:
     """Calculate daily workday capacity and labor utilization metrics for the technician."""
     from decimal import Decimal
-
     from django.db.models import Q, Sum
     from django.utils import timezone
-
     from apps.workorders.models import WorkOrderLabor
 
     if target_date is None:

@@ -1,7 +1,7 @@
-from django.utils.translation import gettext_lazy as _
-from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken
+from django.utils.translation import gettext_lazy as _
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 
 from .jwt_revocation import is_jti_revoked, is_user_revoked
 

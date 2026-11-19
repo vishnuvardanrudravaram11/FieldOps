@@ -11,8 +11,10 @@ Verifies:
 """
 
 import datetime
+from decimal import Decimal
 import uuid
-
+import pytest
+from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -21,14 +23,17 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.assets.models import Asset, AssetCategory
 from apps.dashboards import metrics
+from apps.incidents import services as incident_services
 from apps.incidents.models import ServiceRequest
-from apps.portal import selectors as portal_selectors
 from apps.portal.models import PortalAccount
+from apps.portal import selectors as portal_selectors
+from apps.portal import services as portal_services
 from apps.rbac import services as rbac
-from apps.sites.models import Site
+from apps.sites.models import OperatingCalendar, Site
 from apps.sla.models import EscalationRule, SLABreach, SLAProfile, SLATarget, SLATracking
 from apps.tenancy import services as tenancy
-from apps.tenancy.models import Membership
+from apps.tenancy.models import Membership, Organization
+from apps.workorders.models import WorkOrder
 
 
 class SLAPRDClosureTests(TestCase):
@@ -181,7 +186,7 @@ class SLAPRDClosureTests(TestCase):
             status=SLATracking.Status.BREACHED,
             resolution_state=SLATracking.TargetState.BREACHED,
         )
-        SLABreach.objects.create(
+        breach = SLABreach.objects.create(
             organization=self.org_a,
             tracking=tracking,
             profile=self.profile,
@@ -250,7 +255,7 @@ class SLAPRDClosureTests(TestCase):
 
         # Tracking 1: MET (both response and resolution)
         sr1 = self._create_service_request("Compliance SR 1")
-        SLATracking.objects.create(
+        t1 = SLATracking.objects.create(
             organization=self.org_a,
             request=sr1,
             profile=self.profile,
@@ -271,7 +276,7 @@ class SLAPRDClosureTests(TestCase):
 
         # Tracking 2: BREACHED resolution
         sr2 = self._create_service_request("Compliance SR 2")
-        SLATracking.objects.create(
+        t2 = SLATracking.objects.create(
             organization=self.org_a,
             request=sr2,
             profile=self.profile,
@@ -369,7 +374,7 @@ class SLAPRDClosureTests(TestCase):
         )
         client_role = rbac.system_role_by_key(self.org_a, "client_requester")
         rbac.set_membership_roles(client_m, [client_role], actor=self.admin, system=True)
-        PortalAccount.objects.create(
+        portal_account = PortalAccount.objects.create(
             organization=self.org_a,
             membership=client_m,
             company_name="Customer Corp",
@@ -390,7 +395,7 @@ class SLAPRDClosureTests(TestCase):
         )
 
         # Attach SLA tracking
-        SLATracking.objects.create(
+        tracking = SLATracking.objects.create(
             organization=self.org_a,
             request=sr,
             profile=self.profile,

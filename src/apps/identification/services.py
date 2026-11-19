@@ -217,7 +217,7 @@ def extract_token(token: str) -> str:
                 if candidate:
                     return candidate
             if parsed.scheme and parsed.netloc and not path.strip("/"):
-                return ""
+                return "" 
         except Exception:
             pass
         token = token.split("#")[0].split("?")[0].strip("/")

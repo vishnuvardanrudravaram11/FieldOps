@@ -118,10 +118,11 @@ class PartForm(BootstrapFormMixin, forms.Form):
         unit = (self.cleaned_data.get("unit") or "").strip()
         if not unit:
             raise forms.ValidationError("Unit is required.")
-        if any(c.isalpha() for c in unit):
-            raise forms.ValidationError("Unit must contain only numbers and cannot contain letters.")
-        if not unit.isdigit():
-            raise forms.ValidationError("Unit must contain only numbers.")
+        if not any(c.isalnum() for c in unit):
+            raise forms.ValidationError("Unit must contain letters or numbers.")
+        allowed_separators = set("-./_ ")
+        if any(not (c.isalnum() or c in allowed_separators) for c in unit):
+            raise forms.ValidationError("Unit can contain only letters, numbers, and standard separators.")
         return unit
 
     def clean_min_stock(self):

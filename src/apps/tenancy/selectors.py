@@ -5,7 +5,6 @@ This module (and rbac.services / tenancy.services) are the only places allowed t
 from __future__ import annotations
 
 import uuid
-
 from django.db import models
 
 from apps.core.exceptions import PermissionDenied

@@ -59,6 +59,10 @@ def get_work_order(membership, organization, pk):
     return wo
 
 
+def work_orders_for(membership, organization):
+    return work_order_list(membership, organization)
+
+
 def work_order_list(membership, organization, params=None):
     qs = WorkOrder.objects.for_organization(organization).select_related(
         "site", "assigned_to__user", "asset", "source_request"

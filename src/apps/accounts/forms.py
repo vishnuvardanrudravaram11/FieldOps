@@ -2,7 +2,6 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 
 from apps.ui.forms import BootstrapFormMixin, validate_phone_number
-
 from .models import User
 
 

@@ -13,7 +13,7 @@ WORK_TYPE_TEMPLATES = {
 def set_initial_checklist_state(apps, schema_editor):
     cursor = schema_editor.connection.cursor()
     cursor.execute("""
-        SELECT 1 FROM information_schema.columns
+        SELECT 1 FROM information_schema.columns 
         WHERE table_name = 'workorders_workorder' AND column_name = 'order_number'
     """)
     if not cursor.fetchone():

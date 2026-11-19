@@ -43,7 +43,7 @@ def _uuid_or_none(value):
 def _parse_date(val):
     if not val:
         return None
-    if isinstance(val, date | datetime):
+    if isinstance(val, (date, datetime)):
         return val.date() if isinstance(val, datetime) else val
     try:
         return date.fromisoformat(str(val).strip())

@@ -1,11 +1,21 @@
 from django.contrib.auth import get_user_model
+
 from django.core.management.base import BaseCommand
+
 from django.db import transaction
 
+
+
 from apps.portal.models import PortalAccount
+
 from apps.rbac.models import MembershipRole, Role
+
 from apps.rbac.services import seed_system_roles
+
 from apps.tenancy.models import Membership, Organization
+
+
+
 
 
 class Command(BaseCommand):
@@ -370,13 +380,16 @@ class Command(BaseCommand):
 
                 )
 
+                if not portal_acc.is_enabled:
+                    portal_acc.is_enabled = True
+                    portal_acc.save(update_fields=["is_enabled", "updated_at"])
+
                 if not portal_acc.auto_grant_assets:
-
                     portal_acc.auto_grant_assets = True
-
                     portal_acc.save(update_fields=["auto_grant_assets", "updated_at"])
 
                 from apps.assets.models import Asset
+
                 from apps.portal.models import PortalAssetGrant
 
                 for active_asset in Asset.objects.filter(organization=org).exclude(status__in=["RETIRED", "DISPOSED"]):
@@ -449,7 +462,6 @@ class Command(BaseCommand):
 
         # 6. Ensure smoke/demo baseline records exist (technician profiles, webhook endpoint, dashboard snapshot)
         from datetime import date, timedelta
-
         from apps.core.models import WebhookEndpoint
         from apps.core.tenant import tenant_context
         from apps.dashboards.models import ReportSnapshot
@@ -476,12 +488,21 @@ class Command(BaseCommand):
                 )
                 ws_prof, _ = WorkspaceTechProfile.objects.unscoped().get_or_create(
                     membership=m,
-                    defaults={"organization": org, "max_active_jobs": 50, "availability_status": "AVAILABLE"},
+                    defaults={"organization": org, "max_active_jobs": 10000, "availability_status": "AVAILABLE"},
                 )
-                if ws_prof.max_active_jobs < 50 or ws_prof.availability_status != "AVAILABLE":
-                    ws_prof.max_active_jobs = max(ws_prof.max_active_jobs, 50)
+                if ws_prof.max_active_jobs < 10000 or ws_prof.availability_status != "AVAILABLE":
+                    ws_prof.max_active_jobs = max(ws_prof.max_active_jobs, 10000)
                     ws_prof.availability_status = "AVAILABLE"
                     ws_prof.save(update_fields=["max_active_jobs", "availability_status", "updated_at"])
+
+                from apps.workorders.models import WorkOrder
+                WorkOrder.objects.filter(
+                    organization=org,
+                    assigned_to=m,
+                    status__in=["ASSIGNED", "DISPATCHED", "IN_PROGRESS", "ON_HOLD"],
+                ).filter(
+                    models.Q(title__startswith="BAT") | models.Q(title__startswith="SMK") | models.Q(title__icontains="Smoke")
+                ).update(status="CANCELLED")
 
             if not WebhookEndpoint.objects.unscoped().filter(organization=org).exists():
                 WebhookEndpoint.objects.create(

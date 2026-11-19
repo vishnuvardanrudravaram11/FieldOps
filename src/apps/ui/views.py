@@ -397,14 +397,7 @@ def home(request):
     from apps.checklists.models import ChecklistTemplate, Inspection
     from apps.contracts.models import CoverageAgreement
     from apps.incidents.models import ServiceRequest
-    from apps.inventory.models import (
-        Part,
-        PartReservation,
-        StockBalance,
-        StockMovement,
-        Warehouse,
-        WorkOrderPart,
-    )
+    from apps.inventory.models import Part, PartReservation, StockBalance, StockMovement, Warehouse, WorkOrderPart
     from apps.portal.models import PortalAccount
     from apps.rbac.models import MembershipRole
     from apps.sla.models import SLABreach
@@ -866,7 +859,7 @@ def home(request):
         low_stock = StockBalance.objects.for_organization(org).filter(min_level__isnull=False, on_hand__lte=F("min_level")).count()
         warehouses = Warehouse.objects.for_organization(org).count()
         reservations = PartReservation.objects.for_organization(org).filter(status="ACTIVE").count()
-
+        
         pending_requests_qs = (
             WorkOrderPart.objects.for_organization(org)
             .filter(status=WorkOrderPart.Status.REQUESTED)

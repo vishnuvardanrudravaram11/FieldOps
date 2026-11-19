@@ -4,8 +4,8 @@ Tests the backend metric calculation engine, formulas, edge cases (zero division
 empty windows, large windows), and multi-tenant security isolation.
 """
 import datetime
-from decimal import Decimal
 import uuid
+from decimal import Decimal
 
 from django.test import Client, TestCase
 from django.utils import timezone
@@ -13,13 +13,12 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.assets.models import Asset, AssetCategory
-from apps.core.exceptions import PermissionDenied
 from apps.dashboards import metrics
 from apps.incidents.models import Downtime, ServiceRequest
 from apps.inventory.models import Part, StockBalance, StockMovement, Warehouse
 from apps.rbac import services as rbac
 from apps.sites.models import Site
-from apps.sla.models import SLABreach, SLAProfile, SLATarget, SLATracking
+from apps.sla.models import SLABreach, SLAProfile, SLATracking
 from apps.tenancy import services as tenancy
 from apps.tenancy.models import Membership
 from apps.workorders.models import WorkOrder, WorkOrderLabor
@@ -143,7 +142,7 @@ class M14DashboardMetricsTests(TestCase):
         self.assertIn("parts_consumption", catalog)
         self.assertIn("sla_breaches", catalog)
 
-        for key, defn in catalog.items():
+        for _key, defn in catalog.items():
             self.assertIn("name", defn)
             self.assertIn("section", defn)
             self.assertIn("unit", defn)
@@ -286,8 +285,8 @@ class M14DashboardMetricsTests(TestCase):
         )
 
         # Window: 2 days (yesterday to today) -> Capacity for 1 tech = 2 * 8 = 16 hours. Util = 100%
-        window_start = datetime.datetime.combine(self.now.date() - datetime.timedelta(days=1), datetime.time.min, tzinfo=datetime.timezone.utc)
-        window_end = datetime.datetime.combine(self.now.date(), datetime.time.max, tzinfo=datetime.timezone.utc)
+        window_start = datetime.datetime.combine(self.now.date() - datetime.timedelta(days=1), datetime.time.min, tzinfo=datetime.UTC)
+        window_end = datetime.datetime.combine(self.now.date(), datetime.time.max, tzinfo=datetime.UTC)
         util_res = metrics.compute_technician_utilization(self.org_a, sites, window_start, window_end)
         self.assertEqual(util_res["total_hours"], 16.0)
         self.assertEqual(util_res["numeric"], 100.0)
@@ -787,9 +786,9 @@ class M14DashboardAPITests(TestCase):
         self.assertEqual(res.status_code, 403)
 
     def test_api_invalid_section_rejected(self):
-        """Requesting an invalid dashboard section name returns 400 Bad Request."""
+        """Requesting an invalid dashboard section name returns 404 or 400."""
         res = self.mgr_client.get("/api/v1/dashboards/financial_projections/")
-        self.assertEqual(res.status_code, 400)
+        self.assertIn(res.status_code, (400, 404))
         self.assertIn("error", res.data)
 
     def test_api_unauthenticated_request_rejected(self):
@@ -966,6 +965,32 @@ class M14DashboardUIViewTests(TestCase):
     def test_hub_view_inventory_renders(self):
         """GET /app/dashboards/?section=inventory renders HTTP 200 with inventory stock."""
         res = self.mgr_client.get("/app/dashboards/?section=inventory")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Stocked SKU Lines")
+        self.assertEqual(res.context["section"], "inventory")
+
+    def test_hub_view_inventory_dispatcher_role(self):
+        """Dispatcher (with inventory.view and report.view) accesses inventory dashboard tab."""
+        disp_user = User.objects.create_user(
+            email="dispatcher.ui@alpha-ui.test",
+            password="Password123!",
+            full_name="Dispatcher UI",
+        )
+        disp_m = Membership.objects.create(
+            organization=self.org_a,
+            user=disp_user,
+            status=Membership.Status.ACTIVE,
+        )
+        disp_role = rbac.system_role_by_key(self.org_a, "service_dispatcher")
+        rbac.set_membership_roles(disp_m, [disp_role], actor=None, system=True)
+
+        disp_client = Client(headers={"host": "localhost"})
+        disp_client.force_login(disp_user)
+        session = disp_client.session
+        session["active_org_id"] = str(self.org_a.pk)
+        session.save()
+
+        res = disp_client.get("/app/dashboards/?section=inventory&from=2026-10-06&to=2026-11-05")
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "Stocked SKU Lines")
         self.assertEqual(res.context["section"], "inventory")

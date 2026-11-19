@@ -11,13 +11,12 @@ from django.views import View
 
 from apps.core.exceptions import DomainError
 from apps.sites.models import Site
-from apps.tenancy import selectors
-from apps.tenancy import services as tenancy_services
+from apps.tenancy import selectors, services as tenancy_services
 from apps.tenancy.forms import RoleForm
 from apps.ui.mixins import TenantPermissionMixin
 
 from . import catalog, services
-from .models import Role, RolePermission
+from .models import MembershipRole, Role, RolePermission
 
 
 def _build_perm_matrix():

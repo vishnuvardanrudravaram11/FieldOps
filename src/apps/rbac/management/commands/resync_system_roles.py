@@ -1,8 +1,8 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from apps.rbac.models import Role
-from apps.rbac.role_templates import BY_KEY
+from apps.rbac.models import Role, RolePermission
+from apps.rbac.role_templates import BY_KEY, TEMPLATES
 from apps.rbac.services import _template_codes, seed_system_roles, sync_permissions
 from apps.tenancy.models import Organization
 

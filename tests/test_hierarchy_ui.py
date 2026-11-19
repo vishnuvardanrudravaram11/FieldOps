@@ -67,9 +67,9 @@ def hierarchy_fixture(org_a, site_a1, make_category, owner_a):
         parent=root, child=compressor, relationship_type="ASSEMBLY",
         quantity=1, part_number="PART-CMP-900", actor=owner_a
     )
-    # Level 2: Compressor -> Bearing (Replaceable Part)
+    # Level 1: Root -> Bearing (Replaceable Part)
     link2 = hierarchy.add_component(
-        parent=compressor, child=bearing, relationship_type="REPLACEABLE_PART",
+        parent=root, child=bearing, relationship_type="REPLACEABLE_PART",
         quantity=2, part_number="SKF-MB-6000", actor=owner_a
     )
     return {"root": root, "compressor": compressor, "bearing": bearing, "link1": link1, "link2": link2}
@@ -174,7 +174,7 @@ def test_login_screen_ui_structure(client):
     assert "FieldOps Nexus" in html
     assert 'name="username"' in html
     assert 'name="password"' in html
-    assert "btn-primary" in html
+    assert "fx-login-submit-btn" in html
 
 
 def test_asset_detail_hierarchy_tab_anchors(client, owner_a, hierarchy_fixture):

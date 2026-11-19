@@ -825,7 +825,7 @@ class SlaFullWorkflowLifecycleTests(TestCase):
 
         # Step 10: Resume Work (ON_HOLD -> IN_PROGRESS) -> Timers continue
         orig_reso_due = t_wo.resolution_due_at
-        _ = hold_time + timedelta(minutes=60)
+        resume_time = hold_time + timedelta(minutes=60)
         wo_services.resume_work_order(
             wo,
             membership=self.tech_mem,

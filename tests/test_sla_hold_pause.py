@@ -1,13 +1,15 @@
-from datetime import timedelta
-
 import pytest
+from datetime import timedelta
+from decimal import Decimal
 from django.utils import timezone
 
-from apps.incidents import services as incident_services
+from apps.sla.models import SLAProfile, SLATarget, SLATracking, SLAPauseEvent
 from apps.sla import services as sla_services
 from apps.sla.forms import ProfileForm
-from apps.sla.models import SLAPauseEvent, SLAProfile, SLATracking
+from apps.workorders.models import WorkOrder
 from apps.workorders import services as wo_services
+from apps.incidents.models import ServiceRequest
+from apps.incidents import services as incident_services
 
 pytestmark = pytest.mark.django_db
 
@@ -39,7 +41,7 @@ def test_sla_profile_default_pause_states(org_a, owner_a):
 
 def test_standalone_work_order_hold_pauses_and_resumes_sla(org_a, site_a1, owner_a, tech_a, make_asset, make_member):
     """Holding a standalone work order pauses SLA tracking; resuming shifts due times."""
-    owner_a.memberships.get(organization=org_a)
+    owner_mem = owner_a.memberships.get(organization=org_a)
     tech_mem = tech_a.memberships.get(organization=org_a)
     planner = make_member(org_a, "planner.d8.sa@alpha.test", "maintenance_planner")
     asset = make_asset(org_a, site_a1, "AST-D8-1")

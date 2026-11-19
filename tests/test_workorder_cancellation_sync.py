@@ -15,11 +15,9 @@ Negative tests (Phase 3):
 - An unsuccessful cancellation leaves the request unchanged through atomic rollback.
 """
 from decimal import Decimal
-
 import pytest
-
 from apps.audit.models import AuditLog
-from apps.core.exceptions import Conflict, InvalidTransition
+from apps.core.exceptions import Conflict, InvalidTransition, ValidationFailed
 from apps.incidents import services as incident_services
 from apps.incidents.models import ServiceRequest
 from apps.inventory import services as inventory_services

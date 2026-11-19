@@ -192,7 +192,6 @@ def test_all_work_types_enforce_labor_requirement(org_a, site_a1, make_member, w
     if work_type in (WorkOrder.WorkType.CORRECTIVE, WorkOrder.WorkType.INSTALLATION):
         # Attach required evidence so we test labor blocker independently
         from django.core.files.uploadedfile import SimpleUploadedFile
-
         from apps.files import services as file_services
         att = file_services.attach(
             SimpleUploadedFile("evidence.txt", b"photo evidence content"),

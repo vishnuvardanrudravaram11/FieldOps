@@ -91,8 +91,8 @@ def test_part_form_stock_levels_validation():
 
 
 def test_part_form_unit_and_description_validation():
-    # Valid numeric units (e.g. 1, 10, 100) accepted
-    for valid_unit in ["1", "10", "100"]:
+    # Valid units (e.g. 1, 10, 100, EA, pcs) accepted
+    for valid_unit in ["1", "10", "100", "EA", "pcs"]:
         form_good_unit = PartForm(data={
             "part_number": "FT-UI-100",
             "name": "Mechanical Seal",
@@ -100,8 +100,8 @@ def test_part_form_unit_and_description_validation():
         })
         assert form_good_unit.is_valid(), f"Failed on {valid_unit}: {form_good_unit.errors}"
 
-    # Letters in unit rejected
-    for bad_unit in ["ppfdsbdhg", "EA", "pcs"]:
+    # Symbols and invalid units rejected
+    for bad_unit in ["---", "EA@", "box-10@", "<script>"]:
         form_bad_unit = PartForm(data={
             "part_number": "12345",
             "name": "Mechanical Seal",
@@ -109,18 +109,7 @@ def test_part_form_unit_and_description_validation():
         })
         assert not form_bad_unit.is_valid()
         assert "unit" in form_bad_unit.errors
-        assert "Unit must contain only numbers and cannot contain letters." in str(form_bad_unit.errors["unit"])
-
-    # Symbols and non-numeric units rejected
-    for bad_unit in ["---", "EA@", "box-10", "12.5"]:
-        form_bad_unit = PartForm(data={
-            "part_number": "12345",
-            "name": "Mechanical Seal",
-            "unit": bad_unit,
-        })
-        assert not form_bad_unit.is_valid()
-        assert "unit" in form_bad_unit.errors
-        assert "Unit must contain only numbers" in str(form_bad_unit.errors["unit"])
+        assert any(msg in str(form_bad_unit.errors["unit"]) for msg in ["Unit must contain", "Unit can contain"])
 
     # Digits in description rejected
     form_bad_desc = PartForm(data={

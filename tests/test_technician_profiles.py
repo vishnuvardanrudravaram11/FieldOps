@@ -1,12 +1,10 @@
-from datetime import timedelta
-
 import pytest
+from datetime import timedelta
 from django.utils import timezone
-
 from apps.core.exceptions import Conflict, ValidationFailed
-from apps.workorders import services as wo_services
 from apps.workorders.models import TechnicianProfile, WorkOrder
-
+from apps.workorders import services as wo_services
+from apps.sites.models import Shift
 
 @pytest.mark.django_db
 def test_technician_profile_creation_and_relations(org_a, make_member, site_a1):
@@ -31,9 +29,9 @@ def test_undispatchable_technician_assignment_blocked(org_a, site_a1, make_membe
     planner = make_member(org_a, "planner-techprof@alpha.test", "maintenance_planner")
     tech = make_member(org_a, "tech-undispatchable@alpha.test", "technician")
     asset = make_asset(org_a, site_a1, "AST-TECH-01")
-
+    
     # Create profile marked not dispatchable
-    TechnicianProfile.objects.create(
+    profile = TechnicianProfile.objects.create(
         organization=org_a,
         membership=tech,
         skills=["HVAC"],
@@ -80,7 +78,7 @@ def test_dispatchable_technician_assignment_succeeds(org_a, site_a1, make_member
     planner = make_member(org_a, "planner-techprof2@alpha.test", "maintenance_planner")
     tech = make_member(org_a, "tech-dispatchable@alpha.test", "technician")
     asset = make_asset(org_a, site_a1, "AST-TECH-02")
-
+    
     TechnicianProfile.objects.create(
         organization=org_a,
         membership=tech,

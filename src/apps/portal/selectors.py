@@ -1,16 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
-
 from django.db.models import QuerySet
 
 from apps.tenancy.models import Membership, Organization
-
 from .models import PortalAccount
-
-if TYPE_CHECKING:
-    from apps.incidents.models import ServiceRequest, ServiceRequestHistory
 
 
 STAGE_MAP = {
@@ -219,7 +213,6 @@ def get_portal_dashboard_metrics(membership: Membership | None) -> dict:
         }
 
     from django.db.models import Avg, Count, Q
-
     from apps.incidents.models import ServiceRequest, ServiceRequestHistory
     from apps.portal.models import PortalClosureConfirmation
 

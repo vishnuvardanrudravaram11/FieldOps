@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from apps.rbac import services as rbac
+
+from decimal import Decimal
 from django.contrib import messages
 from django.db.models import Q
 from django.http import Http404, HttpResponse
@@ -8,7 +11,6 @@ from django.utils import timezone
 from django.views import View
 
 from apps.core.exceptions import DomainError
-from apps.rbac import services as rbac
 from apps.ui.mixins import TenantPermissionMixin
 from apps.ui.pagination import paginate_dashboard_queryset
 from apps.workorders.models import WorkOrder
@@ -17,8 +19,8 @@ from . import selectors, services
 
 
 def _get_job(request, pk):
-    from apps.core.exceptions import NotFound
     from apps.workorders import selectors as wo_selectors
+    from apps.core.exceptions import NotFound
     try:
         return wo_selectors.get_work_order(request.membership, request.organization, pk)
     except NotFound:
@@ -234,7 +236,7 @@ class JobCompleteView(TenantPermissionMixin, View):
     required_permission = "work_order.complete"
 
     def get(self, request, pk):
-        _get_job(request, pk)
+        wo = _get_job(request, pk)
         try:
             context = selectors.get_job_completion_context(request.membership, pk)
         except DomainError as exc:
@@ -564,9 +566,8 @@ class JobReportDefectView(TenantPermissionMixin, View):
 # ==============================================================================
 
 from apps.tenancy.models import Membership
-
 from .forms import ShiftForm, TechnicianProfileForm
-from .models import TechnicianProfile
+from .models import Shift, TechnicianProfile
 
 
 class ShiftListView(TenantPermissionMixin, View):
@@ -651,7 +652,7 @@ class TechnicianListView(TenantPermissionMixin, View):
             profile = getattr(m, "technician_profile", None)
             if not profile:
                 profile, _ = services.get_or_create_technician_profile(m)
-
+            
             if status_filter and profile.availability_status != status_filter:
                 continue
             if site_filter and profile.primary_site_id and str(profile.primary_site_id) != site_filter:

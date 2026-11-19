@@ -474,7 +474,7 @@ class SLAProfileViewSet(TenantAPIMixin, viewsets.ViewSet):
                 raise NotFound("Role not found.") from exc
         d.pop("notify_role", None)
         services.create_rule(
-            profile, notify_role=role, actor=request.user, request=request, **d
+            self._profile(request, pk), notify_role=role, actor=request.user, request=request, **d
         )
         return self._out(request, pk)
 
@@ -684,15 +684,21 @@ class EscalationViewSet(TenantAPIMixin, viewsets.ViewSet):
             try:
                 qs = qs.filter(profile_id=uuid.UUID(profile_param))
             except (ValueError, TypeError):
-                qs = qs.none()
+                raise ValidationFailed("Invalid profile UUID.", code="invalid_uuid")
         target_kind = (request.query_params.get("target_kind") or "").strip().upper()
         if target_kind:
+            if target_kind not in ("RESPONSE", "RESOLUTION"):
+                raise ValidationFailed("Invalid target_kind filter value.", code="invalid_target_kind")
             qs = qs.filter(target_kind=target_kind)
         trigger = (request.query_params.get("trigger") or "").strip().upper()
         if trigger:
+            if trigger not in EscalationRule.Trigger.values:
+                raise ValidationFailed("Invalid trigger filter value.", code="invalid_trigger")
             qs = qs.filter(trigger=trigger)
         level = (request.query_params.get("level") or "").strip()
-        if level and level.isdigit():
+        if level:
+            if not level.isdigit():
+                raise ValidationFailed("Invalid level filter value; must be an integer.", code="invalid_level")
             qs = qs.filter(level=int(level))
         return paginate(request, qs.order_by("profile__name", "level", "after_minutes"), EscalationRuleSerializer)
 

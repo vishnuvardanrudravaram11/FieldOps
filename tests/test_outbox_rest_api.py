@@ -1,7 +1,5 @@
 import pytest
-
-from apps.core.models import IntegrationEvent
-
+from apps.core.models import IntegrationEvent, WebhookEndpoint
 
 @pytest.mark.django_db
 def test_integration_events_api_and_retry(as_user, owner_a, org_a):
@@ -40,7 +38,7 @@ def test_webhook_endpoints_api_crud(as_user, owner_a, org_a):
         "is_active": True,
     }, format="json")
     assert res_create.status_code == 201
-    res_create.data["id"]
+    webhook_id = res_create.data["id"]
 
     # List Webhooks
     res_list = client.get("/api/v1/webhooks/")

@@ -4,7 +4,6 @@ control is a POST to one of these views; the services re-check everything."""
 from __future__ import annotations
 
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import redirect, render

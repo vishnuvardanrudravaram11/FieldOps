@@ -12,16 +12,15 @@ from django.views.generic import TemplateView
 
 from apps.assets.workflow import TERMINAL_STATES
 from apps.audit import services as audit
-from apps.core.exceptions import DomainError, NotFound
-from apps.core.exceptions import PermissionDenied as CorePermissionDenied
+from apps.core.exceptions import DomainError, NotFound, PermissionDenied as CorePermissionDenied
 from apps.incidents.models import ServiceRequest
 from apps.incidents.selectors import evidence_for
 from apps.incidents.services import DuplicateIncidentError
 from apps.rbac import services as rbac
 from apps.ui.mixins import TenantPermissionMixin
-from apps.ui.pagination import paginate_dashboard_queryset
 
 from . import forms, selectors, services
+from apps.ui.pagination import paginate_dashboard_queryset
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):

@@ -614,7 +614,7 @@ def test_pm_history_view_with_compliance(pm_, monkeypatch):
     freeze(monkeypatch, T0)
     plan = make_plan(p)
     sch = time_schedule(plan, start_date=date(2026, 3, 10))
-    _ = pm.generate_cycle(sch)
+    c1 = pm.generate_cycle(sch)
 
     from django.test import Client
     client = Client()

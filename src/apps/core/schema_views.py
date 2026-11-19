@@ -1,5 +1,4 @@
 from typing import Any
-
 from drf_spectacular.views import SpectacularAPIView
 from rest_framework.response import Response
 

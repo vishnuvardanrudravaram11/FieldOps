@@ -15,11 +15,10 @@ Tests:
 4. Unauthorized members lacking work_order.assign permission cannot reassign.
 """
 from datetime import timedelta
-
 import pytest
 from django.utils import timezone
 
-from apps.core.exceptions import PermissionDenied
+from apps.core.exceptions import PermissionDenied, ValidationFailed
 from apps.workorders import services as wos
 from apps.workorders.models import WorkOrder, WorkOrderAssignment, WorkOrderEvent
 from tests.phase3_support import new_wo, step

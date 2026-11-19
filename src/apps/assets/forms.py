@@ -1,5 +1,4 @@
 import re
-
 from django import forms
 
 from apps.sites.models import Site, Zone
@@ -7,7 +6,7 @@ from apps.tenancy.models import Membership
 from apps.ui.forms import BootstrapFormMixin
 
 from . import attributes as attrs
-from .models import Asset, AssetCategory, AssetComponent
+from .models import Asset, AssetCategory, AssetComponent, AssetDocument
 
 _TAG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,39}")
 

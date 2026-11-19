@@ -24,7 +24,6 @@ from django.utils import timezone
 
 from apps.audit import services as audit
 from apps.core.exceptions import Conflict, ValidationFailed
-from apps.sites.models import OperatingCalendar
 from apps.sla.calendar import (
     add_business_minutes,
     resolve_calendar,
@@ -102,7 +101,7 @@ def _to_raw_minutes(val, what: str) -> int:
         raise ValidationFailed(f"{what} is required.", code="invalid_minutes")
     if isinstance(val, bool):
         raise ValidationFailed(f"{what} must be a whole number of minutes.", code="invalid_minutes")
-    if isinstance(val, int | float):
+    if isinstance(val, (int, float)):
         return int(val)
     s = str(val).strip().lower()
     if s.isdigit():
@@ -129,7 +128,7 @@ def parse_duration_minutes(val, what="Duration") -> int:
 def parse_percentage(val, what="Warning Alert") -> int:
     if val is None or str(val).strip() == "":
         raise ValidationFailed(f"{what} is required.", code="invalid_warning")
-    if isinstance(val, int | float):
+    if isinstance(val, (int, float)):
         v = int(val)
     else:
         s = str(val).strip().rstrip("%").strip()

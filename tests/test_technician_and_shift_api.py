@@ -1,5 +1,6 @@
 import pytest
-
+from apps.sites.models import Shift
+from apps.workorders.models import TechnicianProfile
 
 @pytest.mark.django_db
 def test_shift_and_technician_profile_api_endpoints(as_user, owner_a, org_a, site_a1, make_member):
