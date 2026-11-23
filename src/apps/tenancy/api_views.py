@@ -203,6 +203,8 @@ class PlatformUserViewSet(PlatformAPIMixin, viewsets.ViewSet):
 
     @extend_schema(request=PlatformUserCreateSerializer, responses={201: lambda: MemberSerializer})
     def create(self, request):
+        if not isinstance(request.data, dict):
+            raise serializers.ValidationError({"non_field_errors": ["Request body must be a JSON object."]})
         from django.shortcuts import get_object_or_404
         org_id = request.data.get("organization") or request.data.get("organization_id")
         if not org_id:

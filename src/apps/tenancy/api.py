@@ -96,9 +96,28 @@ class HasOrgPermission(permissions.BasePermission):
         elif not rbac.catalog.is_registered(code):
             return False
         from apps.ui.utils import is_client_membership
-        if is_client_membership(membership) and not request.path.startswith("/api/v1/portal/"):
-            if rbac.has_permission_anywhere(membership, code):
-                return True
+        if is_client_membership(membership):
+            # Client persona isolation
+            if request.path.startswith("/api/v1/portal/"):
+                if code == MEMBER_ONLY:
+                    return membership.is_active
+                if isinstance(code, (tuple, list, set)):
+                    return any(rbac.has_permission_anywhere(membership, c) for c in code)
+                return rbac.has_permission_anywhere(membership, code)
+
+            # Allowed self-service or client incident reporting paths outside /api/v1/portal/
+            client_allowed_prefixes = (
+                "/api/v1/auth/",
+                "/api/v1/workspace/profile/",
+                "/api/v1/notifications/",
+            )
+            if any(request.path.startswith(pfx) for pfx in client_allowed_prefixes):
+                if code == MEMBER_ONLY:
+                    return membership.is_active
+                if isinstance(code, (tuple, list, set)):
+                    return any(rbac.has_permission_anywhere(membership, c) for c in code)
+                return rbac.has_permission_anywhere(membership, code)
+
             client_incident_paths = (
                 "/api/v1/service-requests",
                 "/service-requests",
@@ -112,11 +131,19 @@ class HasOrgPermission(permissions.BasePermission):
             }
             is_client_incident = (
                 any(request.path.startswith(p) for p in client_incident_paths)
-                and code in client_incident_perms
+                and (
+                    code in client_incident_perms
+                    or (isinstance(code, (tuple, list, set)) and any(c in client_incident_perms for c in code))
+                )
             )
-            if not is_client_incident:
-                if not code.startswith("portal.request."):
-                    return False
+            if is_client_incident:
+                if isinstance(code, (tuple, list, set)):
+                    return any(rbac.has_permission_anywhere(membership, c) for c in code)
+                return rbac.has_permission_anywhere(membership, code)
+
+            # All other paths (e.g. /users/, /audit-logs/, /roles/, /warehouses/, /assets/, /work-orders/)
+            # are strictly forbidden to client personas (DEF-016, DEF-017, DEF-018, DEF-019).
+            return False
         if code == MEMBER_ONLY:
             return membership.is_active  # self-scoped resources (own notifications)
         if isinstance(code, (tuple, list, set)):

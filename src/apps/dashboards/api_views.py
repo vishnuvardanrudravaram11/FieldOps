@@ -24,17 +24,23 @@ class DashboardCatalogAPIView(TenantAPIMixin, APIView):
         responses={200: OpenApiTypes.OBJECT},
     )
     def get(self, request):
+        sections = [
+            "operations",
+            "assets",
+            "maintenance",
+            "service",
+            "inventory",
+            "my-work",
+        ]
         return Response({
             "status": "success",
             "organization_id": str(request.organization.pk),
-            "sections": [
-                "operations",
-                "assets",
-                "maintenance",
-                "service",
-                "inventory",
-                "my-work",
+            "count": len(sections),
+            "results": [
+                {"id": s, "section": s, "name": s.replace("-", " ").title()}
+                for s in sections
             ],
+            "sections": sections,
             "kpis": metrics.KPI_DEFINITIONS,
         })
 

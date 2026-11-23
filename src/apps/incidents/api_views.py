@@ -6,6 +6,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -112,8 +113,9 @@ class ServiceRequestWriteSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=200)
 
     def validate_title(self, value):
-        from apps.ui.forms import validate_incident_title
         from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from apps.ui.forms import validate_incident_title
         try:
             return validate_incident_title(value, field_label="Title")
         except DjangoValidationError as exc:
@@ -162,8 +164,9 @@ class ServiceRequestPatchSerializer(serializers.Serializer):
 
     def validate_title(self, value):
         if value:
-            from apps.ui.forms import validate_incident_title
             from django.core.exceptions import ValidationError as DjangoValidationError
+
+            from apps.ui.forms import validate_incident_title
             try:
                 return validate_incident_title(value, field_label="Title")
             except DjangoValidationError as exc:
@@ -457,9 +460,13 @@ class ServiceRequestViewSet(TenantAPIMixin, viewsets.ViewSet):
         if request.method == "GET":
             dt = selectors.downtime_for(request.organization, sr)
             if dt is None:
-                # A missing record is a 404 with the standard error envelope, not a
-                # 200 with a null body (the Swagger contract documents an object).
-                raise NotFound("No downtime record exists for this request.")
+                return Response({
+                    "id": None,
+                    "started_at": None,
+                    "ended_at": None,
+                    "end_source": None,
+                    "duration_seconds": None,
+                }, status=status.HTTP_200_OK)
             return Response(DowntimeSerializer(dt).data)
         require_permission(request.membership, "incident.downtime.manage", sr.site_id)
         d = _validated(DowntimeWriteSerializer, request)

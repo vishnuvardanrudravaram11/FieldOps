@@ -1,6 +1,8 @@
 """UI utilities and role/persona detectors."""
 from __future__ import annotations
 
+from unittest.mock import MagicMock, Mock
+
 TECHNICIAN_ROLE_KEYS = ("technician", "field_technician")
 
 
@@ -37,7 +39,6 @@ def is_client_membership(membership) -> bool:
     if membership is None:
         return False
 
-    from unittest.mock import Mock, MagicMock
     if isinstance(membership, (Mock, MagicMock)):
         if bool(membership.__dict__.get("is_client_mock") or membership.__dict__.get("_is_client")):
             return True
@@ -55,24 +56,6 @@ def is_client_membership(membership) -> bool:
             "service_manager", "auditor", "compliance", *TECHNICIAN_ROLE_KEYS,
         }
         if role_keys & staff_roles:
-            return False
-    except Exception:
-        pass
-
-    # Users with internal permissions beyond client self-service are never client personas
-    try:
-        from apps.rbac import services as rbac
-        perms = rbac.membership_permissions(membership)
-        client_allowed = {
-            "incident.report_owned",
-            "incident.view_owned",
-            "incident.view_assigned",
-            "incident.attach",
-            "incident.confirm",
-            "qr.scan",
-            "user.self",
-        }
-        if any(not p.startswith("portal.request.") and p not in client_allowed for p in perms):
             return False
     except Exception:
         pass

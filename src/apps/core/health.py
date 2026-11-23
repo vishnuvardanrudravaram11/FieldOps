@@ -3,6 +3,72 @@ from django.db import connection
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
+from rest_framework import permissions
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+
+class HealthLiveAPIView(APIView):
+    authentication_classes: list = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes: list = []
+
+    @extend_schema(
+        summary="Service Liveness Probe",
+        description="Liveness probe: verifies process is active and serving traffic.",
+        responses={200: OpenApiTypes.OBJECT},
+        tags=["Health & System"],
+    )
+    def get(self, request):
+        return Response({"status": "ok"})
+
+
+class HealthReadyAPIView(APIView):
+    authentication_classes: list = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes: list = []
+
+    @extend_schema(
+        summary="Service Readiness Probe",
+        description="Readiness probe: verifies PostgreSQL database and cache/Redis connectivity.",
+        parameters=[
+            OpenApiParameter(
+                name="simulate_degraded",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Pass 1 to simulate degraded health check",
+            )
+        ],
+        responses={200: OpenApiTypes.OBJECT, 503: OpenApiTypes.OBJECT},
+        tags=["Health & System"],
+    )
+    def get(self, request):
+        if request.query_params.get("simulate_degraded") == "1" or request.GET.get("simulate_degraded") == "1":
+            return Response(
+                {"status": "degraded", "checks": {"database": "ok", "cache": "error (simulated)"}},
+                status=503,
+            )
+
+        checks = {}
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+            checks["database"] = "ok"
+        except Exception:
+            checks["database"] = "error"
+        try:
+            cache.set("health:probe", "1", 10)
+            checks["cache"] = "ok" if cache.get("health:probe") == "1" else "error"
+        except Exception:
+            checks["cache"] = "error"
+        healthy = all(v == "ok" for v in checks.values())
+        return Response(
+            {"status": "ok" if healthy else "degraded", "checks": checks},
+            status=200 if healthy else 503,
+        )
 
 
 @require_GET

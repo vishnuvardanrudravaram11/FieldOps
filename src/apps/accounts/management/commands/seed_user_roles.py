@@ -462,6 +462,9 @@ class Command(BaseCommand):
 
         # 6. Ensure smoke/demo baseline records exist (technician profiles, webhook endpoint, dashboard snapshot)
         from datetime import date, timedelta
+
+        from django.db import models
+
         from apps.core.models import WebhookEndpoint
         from apps.core.tenant import tenant_context
         from apps.dashboards.models import ReportSnapshot

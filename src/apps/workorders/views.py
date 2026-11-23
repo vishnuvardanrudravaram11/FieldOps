@@ -68,7 +68,8 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
         if action == "list":
             return "work_order.view_assigned"
         if action == "transition":
-            sub = getattr(self.request, "data", {}).get("action")
+            req_data = getattr(self.request, "data", None)
+            sub = req_data.get("action") if isinstance(req_data, dict) else None
             return {"complete": "work_order.complete", "start": "work_order.start",
                     "hold": "work_order.hold", "resume": "work_order.start",
                     "plan": "work_order.plan", "assign": "work_order.assign",
@@ -311,6 +312,8 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
     )
     @action(detail=True, methods=["post"])
     def transition(self, request, pk=None):
+        if not isinstance(request.data, dict):
+            raise ValidationFailed("Request body must be a JSON object.", code="validation_failed")
         wo = self.get_object()
         act = request.data.get("action")
         clean_data = {k: v for k, v in request.data.items() if k != "action"}
