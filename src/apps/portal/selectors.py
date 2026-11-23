@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
+
 from django.db.models import QuerySet
 
 from apps.tenancy.models import Membership, Organization
+
 from .models import PortalAccount
 
+if TYPE_CHECKING:
+    from apps.incidents.models import ServiceRequest, ServiceRequestHistory
 
 STAGE_MAP = {
     "NEW": "PENDING",
@@ -112,7 +117,19 @@ def get_client_request(membership: Membership | None, request_id: str | uuid.UUI
     """
     if membership is None:
         return None
-    qs = client_requests_for(membership)
+    from apps.incidents.models import ServiceRequest
+
+    # Scoped strictly to caller's organization, excluding other client portal accounts' private requests
+    qs = ServiceRequest.objects.for_organization(membership.organization).select_related(
+        "asset", "site", "reported_by__user"
+    )
+    other_clients = (
+        PortalAccount.objects.filter(organization=membership.organization)
+        .exclude(membership=membership)
+        .values_list("membership_id", flat=True)
+    )
+    qs = qs.exclude(reported_by_id__in=other_clients)
+
     try:
         val = uuid.UUID(str(request_id))
         obj = qs.filter(pk=val).first()
@@ -213,6 +230,7 @@ def get_portal_dashboard_metrics(membership: Membership | None) -> dict:
         }
 
     from django.db.models import Avg, Count, Q
+
     from apps.incidents.models import ServiceRequest, ServiceRequestHistory
     from apps.portal.models import PortalClosureConfirmation
 

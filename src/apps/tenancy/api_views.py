@@ -58,8 +58,22 @@ class PlatformOrganizationCreateSerializer(serializers.Serializer):
 
 
 class PlatformOrganizationStatusSerializer(serializers.Serializer):
-    active = serializers.BooleanField(required=True, help_text="True to activate, False to suspend the organization")
+    active = serializers.BooleanField(required=False, default=None, help_text="True to activate, False to suspend the organization")
+    is_active = serializers.BooleanField(required=False, default=None)
+    status = serializers.CharField(required=False, default="", allow_blank=True)
     reason = serializers.CharField(required=False, allow_blank=True, default="", help_text="Reason for the status change")
+
+    def validate(self, attrs):
+        active = attrs.get("active")
+        if active is None:
+            active = attrs.get("is_active")
+        if active is None and attrs.get("status"):
+            st = str(attrs.get("status")).strip().lower()
+            active = st in ("active", "enabled", "true", "1")
+        if active is None:
+            active = True
+        attrs["active"] = active
+        return attrs
 
 
 
@@ -156,7 +170,7 @@ class PlatformOrganizationViewSet(PlatformAPIMixin, viewsets.ViewSet):
         return Response({"success": True, "hard_deleted": hard, "message": msg}, status=status.HTTP_200_OK)
 
     @extend_schema(request=PlatformOrganizationStatusSerializer, responses=OrganizationSerializer, summary="Update organization status")
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post", "patch"])
     def set_status(self, request, pk=None):
         org = self._get_org(pk)
         ser = PlatformOrganizationStatusSerializer(data=request.data)
@@ -165,6 +179,10 @@ class PlatformOrganizationViewSet(PlatformAPIMixin, viewsets.ViewSet):
         reason = ser.validated_data.get("reason", "") or ("Deactivated via platform API" if not active else "")
         services.set_organization_status(org, active=active, actor=request.user, reason=reason, request=request)
         return Response(OrganizationSerializer(org).data)
+
+    @extend_schema(request=PlatformOrganizationStatusSerializer, responses=OrganizationSerializer)
+    def partial_update(self, request, pk=None):
+        return self.set_status(request, pk)
 
     @extend_schema(request=PlatformUserCreateSerializer, responses={201: lambda: MemberSerializer})
     @action(detail=True, methods=["post"], url_path="users")

@@ -4,12 +4,12 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
+from django.middleware.csrf import rotate_token
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.middleware.csrf import rotate_token
 
 from apps.audit import services as audit
 
@@ -95,10 +95,13 @@ class LoginView(auth_views.LoginView):
 
 
 class LogoutView(auth_views.LogoutView):
-    """POST-only logout view with AJAX/Fetch API support, audit logging, and full cookie deletion."""
+    """Logout view with GET & POST support, AJAX/Fetch API support, audit logging, and full cookie deletion."""
 
-    http_method_names = ["post", "options"]
+    http_method_names = ["get", "post", "options"]
     next_page = "/"
+
+    def get(self, request, *args, **kwargs):
+        return self.post(request, *args, **kwargs)
 
     def post(self, request, *args, **kwargs):
         is_ajax = (

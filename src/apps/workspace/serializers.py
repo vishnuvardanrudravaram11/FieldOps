@@ -1,3 +1,4 @@
+import datetime
 from decimal import Decimal
 
 from rest_framework import serializers
@@ -306,8 +307,9 @@ class JobReportDefectSerializer(serializers.Serializer):
 
 class ShiftSerializer(serializers.ModelSerializer):
     site_id = serializers.UUIDField(read_only=True, allow_null=True)
-    duration_hours = serializers.DecimalField(max_digits=4, decimal_places=2, read_only=True)
+    duration_hours = serializers.SerializerMethodField()
     site_name = serializers.CharField(source="site.name", read_only=True, allow_null=True)
+    notes = serializers.SerializerMethodField()
 
     class Meta:
         model = Shift
@@ -327,6 +329,23 @@ class ShiftSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_duration_hours(self, obj):
+        val = getattr(obj, "duration_hours", None)
+        if val is not None:
+            return float(val) if isinstance(val, Decimal) else val
+        if hasattr(obj, "start_time") and hasattr(obj, "end_time") and obj.start_time and obj.end_time:
+            today = datetime.date.today()
+            dt_start = datetime.datetime.combine(today, obj.start_time)
+            dt_end = datetime.datetime.combine(today, obj.end_time)
+            if dt_end <= dt_start:
+                dt_end += datetime.timedelta(days=1)
+            diff = (dt_end - dt_start).total_seconds() / 3600.0
+            return round(diff, 2)
+        return 8.0
+
+    def get_notes(self, obj):
+        return getattr(obj, "notes", "") or ""
 
 
 class ShiftWriteSerializer(serializers.ModelSerializer):

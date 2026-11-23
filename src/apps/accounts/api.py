@@ -199,6 +199,21 @@ class LogoutView(APIView):
         description="Logs out the current session and blacklists the refresh token.",
     )
     def post(self, request):
+        has_auth_header = bool(
+            request.headers.get("Authorization") or request.META.get("HTTP_AUTHORIZATION")
+        )
+        is_user_auth = bool(
+            getattr(request, "user", None) and request.user.is_authenticated
+        )
+        raw_refresh = ""
+        if isinstance(request.data, dict):
+            raw_refresh = str(request.data.get("refresh", "") or "").strip()
+
+        # DEF-005: Unauthenticated requests without authorization header or refresh token must return HTTP 401
+        if not has_auth_header and not is_user_auth and not raw_refresh:
+            from rest_framework.exceptions import NotAuthenticated
+            raise NotAuthenticated("Authentication credentials were not provided.")
+
         serializer = LogoutSerializer(data=request.data if isinstance(request.data, dict) else {})
         serializer.is_valid(raise_exception=True)
         refresh_token = serializer.validated_data.get("refresh", "").strip()

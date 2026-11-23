@@ -1,8 +1,6 @@
-from django.conf import settings
-from django.conf.urls.static import static
 from django.urls import include, path, re_path
 from django.views.generic import RedirectView
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 from rest_framework.routers import SimpleRouter
 
 from apps.assets.api_views import (
@@ -58,8 +56,14 @@ from apps.sla.api_views import (
     SLAProfileViewSet,
     SLATrackingViewSet,
 )
-from apps.tenancy.api_views import MemberViewSet, OrganizationViewSet, PlatformOrganizationViewSet, PlatformUserViewSet
+from apps.tenancy.api_views import (
+    MemberViewSet,
+    OrganizationViewSet,
+    PlatformOrganizationViewSet,
+    PlatformUserViewSet,
+)
 from apps.workorders.views import TechnicianProfileViewSet, WorkOrderViewSet
+
 
 # Module teams: import your viewsets here and register them on the router.
 class OptionalSlashRouter(SimpleRouter):
@@ -134,12 +138,10 @@ api_v1 = [
          name="organization"),
     re_path(r"^platform/organizations/?$", PlatformOrganizationViewSet.as_view({"get": "list", "post": "create"}),
          name="platform-organizations-list"),
-    re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/?$", PlatformOrganizationViewSet.as_view({"get": "retrieve", "delete": "destroy"}),
+    re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/?$", PlatformOrganizationViewSet.as_view({"get": "retrieve", "delete": "destroy", "post": "set_status", "patch": "partial_update"}),
          name="platform-organizations-detail"),
-    re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/status/?$", PlatformOrganizationViewSet.as_view({"post": "set_status"}),
+    re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/(?:status|set_status)/?$", PlatformOrganizationViewSet.as_view({"post": "set_status", "patch": "partial_update"}),
          name="platform-organizations-status"),
-    re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/set_status/?$", PlatformOrganizationViewSet.as_view({"post": "set_status"}),
-         name="platform-organizations-set-status"),
     re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/users/?$", PlatformOrganizationViewSet.as_view({"post": "create_user"}),
          name="platform-organizations-users"),
     re_path(r"^platform/users/?$", PlatformUserViewSet.as_view({"post": "create"}),
@@ -172,8 +174,9 @@ def _api_v1_not_found(request, *args, **kwargs):
 api_v1.append(re_path(r"^.*$", _api_v1_not_found))
 
 
-from django.views import View
-from django.shortcuts import redirect
+from django.shortcuts import redirect  # noqa: E402
+from django.views import View  # noqa: E402
+
 
 class AdminLandingRedirectView(View):
     """Graceful landing for /admin/ preventing dead-ends or login loops."""
@@ -211,6 +214,8 @@ urlpatterns = [
     path("health/db/", health.database_status, name="health_db"),
     path("health/workers/", health.workers, name="health_workers"),
     path("health/email/", health.email_status, name="health_email"),
+    re_path(r"^api/v1/platform/organizations/(?P<pk>[0-9a-fA-F-]+)/+(?:status/?|set_status/?)?$", PlatformOrganizationViewSet.as_view({"get": "retrieve", "delete": "destroy", "post": "set_status", "patch": "partial_update"}), name="api-v1-platform-organizations-multislash"),
+    re_path(r"^platform/organizations/(?P<pk>[0-9a-fA-F-]+)/+(?:status/?|set_status/?)?$", PlatformOrganizationViewSet.as_view({"get": "retrieve", "delete": "destroy", "post": "set_status", "patch": "partial_update"}), name="root-platform-organizations-detail"),
     path("platform/", include("apps.tenancy.platform_urls")),
     path("api/v1/", include(api_v1)),
     path("accounts/", include("apps.accounts.urls")),
@@ -236,7 +241,8 @@ urlpatterns = [
     path("", include("apps.ui.urls")),
 ]
 
-from apps.files.views import protected_media_serve
+from apps.files.views import protected_media_serve  # noqa: E402
+
 urlpatterns += [
     re_path(r"^media/(?P<path>.*)$", protected_media_serve),
 ]

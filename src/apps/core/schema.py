@@ -67,6 +67,7 @@ def strip_unused_path_parameters(result, generator, request, public):
                     op["parameters"] = filtered
                 else:
                     op.pop("parameters", None)
+    result["paths"] = {p: item for p, item in paths.items() if "//" not in p}
     return result
 
 
@@ -75,7 +76,7 @@ def filter_api_v1_endpoints(endpoints):
     return [
         (path, path_regex, method, callback)
         for (path, path_regex, method, callback) in endpoints
-        if path.startswith("/api/v1") or path.startswith("^/api/v1")
+        if (path.startswith("/api/v1") or path.startswith("^/api/v1")) and "//" not in path
     ]
 
 
