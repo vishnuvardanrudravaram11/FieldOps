@@ -1,33 +1,29 @@
+from __future__ import annotations
+
 from rest_framework import serializers
+
 from apps.assets.models import (
-    AssetCategory,
     Asset,
+    AssetCategory,
     AssetComponent,
+    AssetDocument,
     AssetMeter,
     AssetMeterReading,
-    AssetStatusHistory,
-    AssetDocument,
     AssetStatus,
-    AssetCriticality,
+    AssetStatusHistory,
 )
-from apps.sites.models import Site, Zone
-from apps.tenancy.models import Organization
 
 
 class AssetCategorySerializer(serializers.ModelSerializer):
-    children_count = serializers.IntegerField(source="children.count", read_only=True)
-
     class Meta:
         model = AssetCategory
         fields = [
             "id",
             "organization",
             "name",
-            "code",
             "description",
-            "parent",
             "is_active",
-            "children_count",
+            "attribute_definitions",
             "created_at",
             "updated_at",
         ]
@@ -35,18 +31,21 @@ class AssetCategorySerializer(serializers.ModelSerializer):
 
 
 class AssetComponentSerializer(serializers.ModelSerializer):
+    parent_tag = serializers.CharField(source="parent.asset_tag", read_only=True)
+    child_tag = serializers.CharField(source="child.asset_tag", read_only=True)
+
     class Meta:
         model = AssetComponent
         fields = [
             "id",
-            "parent_asset",
-            "name",
-            "component_code",
-            "serial_number",
-            "is_replaceable",
-            "status",
-            "installed_at",
-            "specifications",
+            "organization",
+            "parent",
+            "parent_tag",
+            "child",
+            "child_tag",
+            "relationship_type",
+            "quantity",
+            "part_number",
             "notes",
             "created_at",
             "updated_at",
@@ -55,107 +54,117 @@ class AssetComponentSerializer(serializers.ModelSerializer):
 
 
 class AssetMeterReadingSerializer(serializers.ModelSerializer):
+    recorded_by_email = serializers.EmailField(source="recorded_by.email", read_only=True)
+
     class Meta:
         model = AssetMeterReading
         fields = [
             "id",
+            "organization",
             "meter",
-            "reading_value",
-            "reading_date",
+            "value",
+            "read_at",
             "recorded_by",
+            "recorded_by_email",
+            "source",
             "notes",
             "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class AssetMeterSerializer(serializers.ModelSerializer):
-    recent_readings = AssetMeterReadingSerializer(source="readings", many=True, read_only=True)
+    readings = AssetMeterReadingSerializer(many=True, read_only=True)
 
     class Meta:
         model = AssetMeter
         fields = [
             "id",
+            "organization",
             "asset",
-            "meter_name",
-            "unit_of_measurement",
-            "current_reading",
-            "last_reading_at",
-            "recent_readings",
+            "name",
+            "unit",
+            "is_active",
+            "readings",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "current_reading", "last_reading_at", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class AssetStatusHistorySerializer(serializers.ModelSerializer):
+    changed_by_email = serializers.EmailField(source="changed_by.email", read_only=True)
+
     class Meta:
         model = AssetStatusHistory
         fields = [
             "id",
+            "organization",
             "asset",
-            "previous_status",
-            "new_status",
+            "from_status",
+            "to_status",
+            "action",
             "reason",
             "changed_by",
+            "changed_by_email",
+            "source",
             "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class AssetDocumentSerializer(serializers.ModelSerializer):
+    uploaded_by_email = serializers.EmailField(source="uploaded_by.email", read_only=True)
+
     class Meta:
         model = AssetDocument
         fields = [
             "id",
+            "organization",
             "asset",
             "title",
-            "document_type",
-            "file_url",
-            "version",
+            "doc_type",
+            "attachment",
             "uploaded_by",
+            "uploaded_by_email",
+            "is_active",
             "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class AssetListSerializer(serializers.ModelSerializer):
     """Compact serializer for table grids and list views."""
     category_name = serializers.CharField(source="category.name", read_only=True)
-    site_name = serializers.CharField(source="site.name", read_only=True)
-    zone_name = serializers.CharField(source="zone.name", read_only=True, default="", allow_null=True)
-    parent_asset_code = serializers.CharField(source="parent_asset.asset_id", read_only=True, default="")
-    child_count = serializers.IntegerField(source="child_assets.count", read_only=True)
-    components_count = serializers.IntegerField(source="components.count", read_only=True)
+    site_code = serializers.CharField(source="site.code", read_only=True)
+    zone_name = serializers.CharField(source="zone.name", read_only=True, default="")
 
     class Meta:
         model = Asset
         fields = [
             "id",
-            "asset_id",
+            "organization",
+            "asset_tag",
             "opaque_identifier",
             "name",
+            "description",
             "category",
             "category_name",
             "site",
-            "site_name",
+            "site_code",
             "zone",
             "zone_name",
-            "parent_asset",
-            "parent_asset_code",
-            "model_number",
-            "serial_number",
             "manufacturer",
+            "model",
+            "serial_number",
             "status",
-            "criticality",
-            "department",
-            "child_count",
-            "components_count",
-            "is_active",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "opaque_identifier", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class AssetHierarchyNodeSerializer(serializers.ModelSerializer):
@@ -164,85 +173,76 @@ class AssetHierarchyNodeSerializer(serializers.ModelSerializer):
     Includes sub-assets and replaceable sub-components.
     """
     category_name = serializers.CharField(source="category.name", read_only=True)
-    site_name = serializers.CharField(source="site.name", read_only=True)
-    zone_name = serializers.CharField(source="zone.name", read_only=True, default="", allow_null=True)
-    components = AssetComponentSerializer(many=True, read_only=True)
+    site_code = serializers.CharField(source="site.code", read_only=True)
+    components = AssetComponentSerializer(source="child_links", many=True, read_only=True)
     children = serializers.SerializerMethodField()
 
     class Meta:
         model = Asset
         fields = [
             "id",
-            "asset_id",
+            "asset_tag",
             "opaque_identifier",
             "name",
             "category_name",
-            "site_name",
-            "zone_name",
+            "site_code",
             "status",
-            "criticality",
-            "model_number",
-            "serial_number",
             "components",
             "children",
         ]
 
     def get_children(self, obj):
-        children_qs = obj.child_assets.filter(is_active=True).prefetch_related("components", "child_assets")
-        return AssetHierarchyNodeSerializer(children_qs, many=True).data
+        children_links = getattr(obj, "child_links", None)
+        if not children_links:
+            return []
+        child_assets = [link.child for link in children_links.all() if link.child]
+        return AssetHierarchyNodeSerializer(child_assets, many=True).data
 
 
 class AssetDetailSerializer(serializers.ModelSerializer):
     """Full detail view for single asset profile."""
     category_name = serializers.CharField(source="category.name", read_only=True)
-    site_name = serializers.CharField(source="site.name", read_only=True)
-    zone_name = serializers.CharField(source="zone.name", read_only=True, default="", allow_null=True)
-    parent_asset_code = serializers.CharField(source="parent_asset.asset_id", read_only=True, default="")
-    components = AssetComponentSerializer(many=True, read_only=True)
+    site_code = serializers.CharField(source="site.code", read_only=True)
+    zone_name = serializers.CharField(source="zone.name", read_only=True, default="")
+    owner_name = serializers.CharField(source="owner.user.display_name", read_only=True, default="")
+    components = AssetComponentSerializer(source="child_links", many=True, read_only=True)
     meters = AssetMeterSerializer(many=True, read_only=True)
     documents = AssetDocumentSerializer(many=True, read_only=True)
     status_history = AssetStatusHistorySerializer(many=True, read_only=True)
-    child_assets_count = serializers.IntegerField(source="child_assets.count", read_only=True)
 
     class Meta:
         model = Asset
         fields = [
             "id",
             "organization",
-            "asset_id",
+            "asset_tag",
             "opaque_identifier",
             "name",
+            "description",
             "category",
             "category_name",
             "site",
-            "site_name",
+            "site_code",
             "zone",
             "zone_name",
-            "parent_asset",
-            "parent_asset_code",
-            "child_assets_count",
-            "model_number",
-            "serial_number",
+            "owner",
+            "owner_name",
             "manufacturer",
+            "model",
+            "serial_number",
             "status",
-            "criticality",
             "purchase_date",
-            "purchase_cost",
             "commission_date",
-            "warranty_expiry_date",
-            "department",
-            "specifications",
-            "is_active",
+            "warranty_ref",
+            "attributes",
             "components",
             "meters",
             "documents",
             "status_history",
-            "created_by",
-            "updated_by",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "opaque_identifier", "created_by", "updated_by", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class AssetStatusChangeSerializer(serializers.Serializer):

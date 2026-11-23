@@ -635,22 +635,6 @@ def complete_inspection(inspection: Inspection, *, membership, actor, summary: s
     _assert_executor(insp.work_order, membership, insp.site_id)
     issues = completion_issues(insp)
     if issues:
-        org = insp.organization
-        items = list(ChecklistItem.objects.for_organization(org).filter(template=insp.template))
-        existing_responses = set(InspectionResponse.objects.for_organization(org).filter(inspection=insp).values_list("item_id", flat=True))
-        for it in items:
-            if it.pk not in existing_responses and it.required:
-                InspectionResponse.objects.create(
-                    organization=org,
-                    inspection=insp,
-                    item=it,
-                    value_text="Compliant / Verified",
-                    value_boolean=True,
-                    is_exception=False,
-                    recorded_by=membership,
-                )
-        issues = completion_issues(insp)
-    if issues:
         raise Conflict("The inspection cannot be completed yet: " + " ".join(issues), code="inspection_incomplete",
                        details={"issues": issues})
     INSPECTION_STATUS.apply(insp, "complete")
