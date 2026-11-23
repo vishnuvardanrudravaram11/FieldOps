@@ -3,7 +3,6 @@ from django.core.validators import MaxLengthValidator
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
-from rest_framework.settings import api_settings
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -114,6 +113,13 @@ class BoundedTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         try:
             data = super().validate(attrs)
+            user = getattr(self, "user", None)
+            if user and not (user.is_superuser or user.is_staff or getattr(user, "is_platform_admin", False)):
+                from apps.tenancy.models import Membership
+                user_memberships = Membership.objects.filter(user=user)
+                if user_memberships.exists() and not user_memberships.filter(status=Membership.Status.ACTIVE).exists():
+                    from rest_framework import exceptions
+                    raise exceptions.AuthenticationFailed("User account is inactive or suspended.")
             if getattr(settings, "AXES_ENABLED", True) and http_request and getattr(self, "user", None):
                 try:
                     from django.contrib.auth.signals import user_logged_in

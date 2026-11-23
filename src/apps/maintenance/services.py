@@ -35,7 +35,7 @@ PLAN_FIELDS = ["name", "description", "priority", "estimated_hours", "checklist_
 SCHEDULE_FIELDS = ["trigger_type", "frequency", "interval_count", "start_date", "meter", "interval_value",
                    "start_value", "lead_days", "window_start_time", "window_hours", "reminder_days", "is_active",
                    "next_sequence", "sequence_offset", "next_due_date", "next_due_value"]
-PRIORITIES = ("LOW", "MEDIUM", "HIGH", "URGENT")
+PRIORITIES = ("LOW", "MEDIUM", "HIGH", "CRITICAL", "URGENT")
 TERMINAL_ASSET = ("RETIRED", "DISPOSED")
 
 
@@ -324,6 +324,8 @@ def _is_duplicate_schedule_error(exc: IntegrityError) -> bool:
 @transaction.atomic
 def create_schedule(plan: MaintenancePlan, *, actor, request=None, **data) -> MaintenanceSchedule:
     plan = MaintenancePlan.objects.select_for_update(of=("self",)).select_related("asset", "site").get(pk=plan.pk)
+    if not plan.is_active:
+        raise Conflict("Cannot add schedules to an inactive maintenance plan.", code="plan_inactive")
     _check_asset(plan.organization, plan.asset)
     fields = _validate_schedule(plan, data)
     sch = MaintenanceSchedule(organization=plan.organization, plan=plan, **fields)

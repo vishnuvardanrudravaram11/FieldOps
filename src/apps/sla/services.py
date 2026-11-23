@@ -101,7 +101,7 @@ def _to_raw_minutes(val, what: str) -> int:
         raise ValidationFailed(f"{what} is required.", code="invalid_minutes")
     if isinstance(val, bool):
         raise ValidationFailed(f"{what} must be a whole number of minutes.", code="invalid_minutes")
-    if isinstance(val, (int, float)):
+    if isinstance(val, int | float):
         return int(val)
     s = str(val).strip().lower()
     if s.isdigit():
@@ -128,7 +128,7 @@ def parse_duration_minutes(val, what="Duration") -> int:
 def parse_percentage(val, what="Warning Alert") -> int:
     if val is None or str(val).strip() == "":
         raise ValidationFailed(f"{what} is required.", code="invalid_warning")
-    if isinstance(val, (int, float)):
+    if isinstance(val, int | float):
         v = int(val)
     else:
         s = str(val).strip().rstrip("%").strip()
@@ -218,6 +218,9 @@ def _validate_scope_objects(org_id, site, client, contract, asset, asset_categor
 def _resolve_calendar_or_fail(use_biz: bool, calendar, profile, site, org):
     if not use_biz or calendar is not None:
         return calendar
+    from apps.sites.models import OperatingCalendar
+
+    from .calendar import resolve_calendar
     cal = resolve_calendar(profile, site) or OperatingCalendar.objects.for_organization(org).filter(is_default=True).first()
     if cal is not None:
         return cal
@@ -345,8 +348,6 @@ def set_profile_active(profile: SLAProfile, active: bool, *, actor, request=None
     profile = SLAProfile.objects.select_for_update().get(pk=profile.pk)
     from apps.tenancy.models import Organization
     Organization.objects.select_for_update().get(pk=profile.organization_id)
-    if profile.is_active == active:
-        return profile
     if active:
         if not profile.targets.exists():
             raise ValidationFailed(
@@ -357,6 +358,8 @@ def set_profile_active(profile: SLAProfile, active: bool, *, actor, request=None
             client=profile.client, contract=profile.contract, asset=profile.asset,
             asset_category=profile.asset_category, service_type=profile.service_type,
             work_type=profile.work_type), current=profile, coverage_only=profile.coverage_only)
+    if profile.is_active == active:
+        return profile
     profile.is_active = active
     try:
         with transaction.atomic():

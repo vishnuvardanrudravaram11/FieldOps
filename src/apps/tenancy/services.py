@@ -563,6 +563,16 @@ def set_member_active(membership: Membership, *, active: bool, actor, request=No
         membership.activated_at = timezone.now()
     rbac.clear_cache(membership)
     membership.save(update_fields=["status", "activated_at", "updated_at"])
+    user = membership.user
+    if not active:
+        other_active = Membership.objects.filter(user=user, status=Membership.Status.ACTIVE).exclude(pk=membership.pk).exists()
+        if not other_active and not (user.is_superuser or user.is_staff or getattr(user, "is_platform_admin", False)):
+            user.is_active = False
+            user.save(update_fields=["is_active"])
+    else:
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=["is_active"])
     audit.record("user.reactivated" if active else "user.deactivated", actor=actor,
                  organization=membership.organization, target=membership, target_repr=membership.user.email,
                  before=before, after={"status": membership.status}, request=request)

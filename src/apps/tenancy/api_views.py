@@ -92,8 +92,8 @@ def _resolve_role_ids(org, role_str, role_ids=None):
     if not role:
         role = Role.objects.filter(organization=org, name__iexact=role_str).first()
     if not role:
-        role = Role.objects.filter(organization=org, system_key="technician").first()
-    return [role.pk] if role else []
+        raise serializers.ValidationError({"role": f"Role '{role_str}' was not found."})
+    return [role.pk]
 
 
 class PlatformUserCreateSerializer(serializers.Serializer):
