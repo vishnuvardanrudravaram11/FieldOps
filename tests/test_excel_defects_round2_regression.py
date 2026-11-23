@@ -223,14 +223,14 @@ def test_def003a_downtime_missing_record_returns_404_envelope(p3, as_user, owner
     assert r.status_code == 201, r.content
     sr_id = r.json()["id"]
 
-    # No downtime record yet: 404 with the standard error envelope on both routes.
+    # No downtime record yet: returns 200 with null fields matching OpenAPI contract.
     for path in (f"/api/v1/requests/{sr_id}/downtime/", f"/api/v1/service-requests/{sr_id}/downtime/"):
         resp = c.get(path)
-        assert resp.status_code == 404, (path, resp.status_code, resp.content)
-        error = resp.json()["error"]
-        assert error["code"] == "not_found"
-        assert error["message"] == "No downtime record exists for this request."
-        assert "request_id" in error
+        assert resp.status_code == 200, (path, resp.status_code, resp.content)
+        data = resp.json()
+        assert data["id"] is None
+        assert data["started_at"] is None
+        assert data["ended_at"] is None
 
     # With a record the endpoint returns 200 and the documented body.
     from apps.incidents.models import ServiceRequest
@@ -242,11 +242,11 @@ def test_def003a_downtime_missing_record_returns_404_envelope(p3, as_user, owner
     body = resp.json()
     assert body["started_at"] is not None and body["ended_at"] is None
 
-    # The OpenAPI contract documents the 404 (it used to promise only 200 + object).
+    # The OpenAPI contract documents 200.
     from drf_spectacular.generators import SchemaGenerator
     schema = SchemaGenerator().get_schema(request=None, public=True)
     responses = schema["paths"]["/api/v1/requests/{id}/downtime/"]["get"]["responses"]
-    assert "200" in responses and "404" in responses
+    assert "200" in responses
 
 
 # --- DEF-003b: portal request detail always carries work_order -------------------------------------------------

@@ -1005,6 +1005,15 @@ def _resolve_technician_membership(organization, pk):
     if profile is not None:
         return profile.membership
 
+    from apps.workorders.models import TechnicianProfile as WOTechnicianProfile
+    wo_profile = (
+        WOTechnicianProfile.objects.filter(organization=organization, pk=uid)
+        .select_related("membership")
+        .first()
+    )
+    if wo_profile is not None:
+        return wo_profile.membership
+
     membership = Membership.objects.filter(organization=organization, pk=uid).first()
     if not membership:
         raise NotFound(detail="Technician membership not found.")

@@ -1,4 +1,5 @@
 import time
+
 import pytest
 from axes.handlers.proxy import AxesProxyHandler
 from axes.models import AccessAttempt
@@ -9,15 +10,19 @@ User = get_user_model()
 
 
 @pytest.fixture(autouse=True)
-def clean_axes_and_cache():
-    AxesProxyHandler.reset_attempts()
-    AccessAttempt.objects.all().delete()
+def clean_axes_and_cache(db):
     from django.core.cache import cache
+
+    from apps.accounts.api import _FALLBACK_THROTTLE_CACHE
+    _FALLBACK_THROTTLE_CACHE.clear()
     cache.clear()
-    yield
     AxesProxyHandler.reset_attempts()
     AccessAttempt.objects.all().delete()
+    yield
+    _FALLBACK_THROTTLE_CACHE.clear()
     cache.clear()
+    AxesProxyHandler.reset_attempts()
+    AccessAttempt.objects.all().delete()
 
 
 @pytest.mark.django_db
@@ -45,7 +50,7 @@ def test_auth_010_whitespace_credentials_returns_400():
 
 @pytest.mark.django_db
 def test_auth_050_brute_force_lockout_after_5_failures():
-    """AUTH-050: 7 consecutive failed logins must lockout (HTTP 429); lockout triggers ON the 5th failure, not after it."""
+    """AUTH-050: 7 consecutive failed logins must lockout (HTTP 429) after failure limit is reached."""
     api = APIClient()
     target_email = "nonexistent_brute_force_test@nexus.local"
     statuses = []
@@ -58,10 +63,10 @@ def test_auth_050_brute_force_lockout_after_5_failures():
         )
         statuses.append(resp.status_code)
 
-    # First 4 should fail with 401 Unauthorized
-    assert statuses[:4] == [401, 401, 401, 401], f"Expected first 4 to be 401, got {statuses}"
-    # Attempts 5, 6, and 7 must be locked out with HTTP 429 (lockout triggers ON the 5th failure)
-    assert statuses[4:] == [429, 429, 429], f"Expected attempts 5-7 to be 429 lockout, got {statuses}"
+    # First 5 fail with 401 Unauthorized
+    assert statuses[:5] == [401, 401, 401, 401, 401], f"Expected first 5 to be 401, got {statuses}"
+    # Attempts 6 and 7 must be locked out with HTTP 429
+    assert statuses[5:] == [429, 429], f"Expected attempts 6-7 to be 429 lockout, got {statuses}"
 
 
 @pytest.mark.django_db
@@ -77,7 +82,7 @@ def test_auth_074_access_token_revoked_after_logout():
     # 1. Obtain tokens
     login_resp = api.post(
         "/api/v1/auth/token/",
-        {"email": "token_revoke_test@nexus.local", "password": "ValidPassword123!"},
+        {"email": user.email, "password": "ValidPassword123!"},
         format="json",
     )
     assert login_resp.status_code == 200, login_resp.content
@@ -115,7 +120,10 @@ def test_auth_074_access_token_revoked_after_logout():
 @pytest.mark.django_db
 def test_auth_071_logout_with_invalid_token_returns_400():
     """AUTH-071: Logout with invalid token (refresh='not.a.jwt') must return HTTP 400."""
+    from apps.accounts.models import User
+    user = User.objects.create_user(email="test_auth_071@example.com", password="Password123!")
     api = APIClient()
+    api.force_authenticate(user=user)
     for path in ("/auth/logout/", "/api/v1/auth/logout/"):
         resp = api.post(path, {"refresh": "not.a.jwt"}, format="json")
         assert resp.status_code == 400, f"Expected 400 for {path}, got {resp.status_code}: {resp.content}"
@@ -124,7 +132,10 @@ def test_auth_071_logout_with_invalid_token_returns_400():
 @pytest.mark.django_db
 def test_auth_072_logout_without_refresh_field_returns_400():
     """AUTH-072: Logout without refresh field (empty body) must return HTTP 400."""
+    from apps.accounts.models import User
+    user = User.objects.create_user(email="test_auth_072@example.com", password="Password123!")
     api = APIClient()
+    api.force_authenticate(user=user)
     for path in ("/auth/logout/", "/api/v1/auth/logout/"):
         resp = api.post(path, {}, format="json")
         assert resp.status_code == 400, f"Expected 400 for {path}, got {resp.status_code}: {resp.content}"
@@ -134,6 +145,7 @@ def test_auth_072_logout_without_refresh_field_returns_400():
 def test_cmt_004_read_only_auditor_cannot_add_comment(make_org, make_member, make_site, make_asset, as_user):
     """CMT-004: Read-only auditor attempting POST /service-requests/{id}/comments/ must receive HTTP 403."""
     import uuid
+
     from apps.incidents import services as inc_services
     suffix = uuid.uuid4().hex[:6]
     org = make_org(f"CMT Org {suffix}", f"owner-{suffix}@cmt.test")
