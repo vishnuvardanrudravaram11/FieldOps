@@ -127,9 +127,9 @@ def filter_zones(qs, params):
             return qs.none()
     if q:
         qs = qs.filter(Q(name__icontains=q) | Q(code__icontains=q))
-    if ztype in Zone.ZoneType.values:
+    if ztype:
         qs = qs.filter(zone_type=ztype)
-    if status in Zone.Status.values:
+    if status:
         qs = qs.filter(status=status)
     return qs
 

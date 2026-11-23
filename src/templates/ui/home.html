@@ -113,7 +113,7 @@
            aria-valuenow="{{ capacity_summary.utilization_pct }}" aria-valuemin="0" aria-valuemax="100">
       </div>
     </div>
-    <script>
+    <script nonce="{{ csp_nonce }}">
       document.querySelectorAll('.fx-shift-progress[data-progress-pct]').forEach(function (el) {
         el.style.width = el.getAttribute('data-progress-pct') + '%';
       });

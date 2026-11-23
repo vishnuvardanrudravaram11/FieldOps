@@ -10,6 +10,7 @@ from typing import Any
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.core.exceptions import ValidationFailed
 from apps.rbac import services as rbac
 from apps.sites.selectors import scoped_get
 
@@ -43,12 +44,12 @@ def _uuid_or_none(value):
 def _parse_date(val):
     if not val:
         return None
-    if isinstance(val, (date, datetime)):
+    if isinstance(val, date | datetime):
         return val.date() if isinstance(val, datetime) else val
     try:
         return date.fromisoformat(str(val).strip())
-    except ValueError:
-        return None
+    except ValueError as exc:
+        raise ValidationFailed(f"Invalid date format '{val}'. Expected YYYY-MM-DD.", code="invalid_date_format") from exc
 
 
 def plans_for(membership, org):

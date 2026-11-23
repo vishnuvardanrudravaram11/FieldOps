@@ -223,10 +223,12 @@ def update_item(item: ChecklistItem, *, actor, request=None, **changes) -> Check
 
 
 def _renumber(template, ordered_items):
-    # two passes inside one transaction; the position uniqueness is DEFERRED so this is safe
+    # two passes inside one transaction to prevent unique constraint collisions.
+    # Positive offset (1_000_000 + idx) satisfies PositiveIntegerField (>= 0) constraint.
+    for idx, it in enumerate(ordered_items, start=1):
+        ChecklistItem.objects.for_organization(template.organization).filter(pk=it.pk).update(position=1_000_000 + idx)
     for pos, it in enumerate(ordered_items, start=1):
-        if it.position != pos:
-            ChecklistItem.objects.for_organization(template.organization).filter(pk=it.pk).update(position=pos)
+        ChecklistItem.objects.for_organization(template.organization).filter(pk=it.pk).update(position=pos)
 
 
 @transaction.atomic

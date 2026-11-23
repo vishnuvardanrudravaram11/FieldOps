@@ -1033,9 +1033,9 @@ def set_technician_availability(
         )
 
     if status in (TechnicianProfile.AvailabilityStatus.ON_LEAVE, TechnicianProfile.AvailabilityStatus.OFF_DUTY):
+        from apps.notifications.services import notify
         from apps.workorders import services as wo_services
         from apps.workorders.models import WorkOrder
-        from apps.notifications.services import notify
 
         status_label = status.replace("_", " ").title()
         reason = f"Technician availability set to {status_label}."
@@ -1067,7 +1067,12 @@ def set_technician_availability(
             except Exception:
                 job.status = WorkOrder.Status.ON_HOLD
                 job.hold_reason = reason
-                job.save(update_fields=["status", "hold_reason", "updated_at"])
+                job._workflow_transition_write = True
+                try:
+                    job.save(update_fields=["status", "hold_reason", "updated_at"])
+                finally:
+                    if hasattr(job, "_workflow_transition_write"):
+                        del job._workflow_transition_write
                 held_orders.append(job)
 
         if held_orders:
