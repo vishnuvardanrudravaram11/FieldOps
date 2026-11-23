@@ -12,7 +12,9 @@ from rest_framework.views import APIView
 
 from apps.core import logging as flogging
 from apps.core.exceptions import Conflict, DomainError, ValidationFailed
+from apps.rbac import services as rbac
 from apps.tenancy.api import TenantAPIMixin
+from apps.ui.utils import is_technician_membership
 from apps.workorders.models import WorkOrder
 from apps.workorders.serializers import LaborSerializer, WorkOrderSerializer
 
@@ -1096,14 +1098,12 @@ class TechnicianAvailabilityAPIView(TenantAPIMixin, APIView):
         summary="Update technician availability status",
     )
     def post(self, request, pk=None):
+        if not isinstance(request.data, dict):
+            raise ValidationFailed("Request body must be a JSON object.", code="validation_failed")
         if pk:
             membership = _resolve_technician_membership(request.organization, pk)
         else:
             membership = request.membership
-            from django.core.exceptions import PermissionDenied
-
-            from apps.ui.utils import is_technician_membership
-            from apps.rbac import services as rbac
             if not (is_technician_membership(membership) or rbac.has_permission_anywhere(membership, "work_order.record")):
                 raise PermissionDenied("Only technicians can set availability.")
 

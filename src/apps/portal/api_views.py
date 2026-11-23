@@ -1,6 +1,8 @@
 from __future__ import annotations
-from apps.core.api import StandardPagination
 
+import uuid
+
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema, extend_schema_field
 from rest_framework import parsers, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -9,14 +11,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.assets.models import Asset
+from apps.core.api import StandardPagination
 from apps.core.apiutils import paginate
 from apps.core.exceptions import Conflict, DomainError, NotFound, ValidationFailed
 from apps.incidents.models import ServiceRequest
-from apps.tenancy.api import MEMBER_ONLY, TenantAPIMixin
+from apps.tenancy.api import TenantAPIMixin
 from apps.tenancy.models import Membership
 
 from . import selectors, services
-from .models import PortalAccount, PortalAssetGrant, PortalClosureConfirmation
+from .models import PortalAccount, PortalClosureConfirmation
 
 
 class PortalAccountSerializer(serializers.ModelSerializer):
@@ -55,8 +58,8 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
     """
 
     permission_map = {
-        "list": "portal.manage",
-        "retrieve": ("portal.manage", "portal.request.view", MEMBER_ONLY),
+        "list": ("portal.manage", "portal.request.view"),
+        "retrieve": ("portal.manage", "portal.request.view"),
         "create": "portal.manage",
         "update": "portal.manage",
         "partial_update": "portal.manage",
@@ -69,7 +72,13 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
         org = getattr(self.request, "organization", None)
         if org is None:
             return PortalAccount.objects.none()
-        return selectors.accounts_for_organization(org)
+        qs = selectors.accounts_for_organization(org)
+        membership = getattr(self.request, "membership", None)
+        if membership:
+            from apps.rbac import services as rbac
+            if not rbac.has_permission_anywhere(membership, "portal.manage"):
+                return qs.filter(membership=membership)
+        return qs
 
     def get_object(self):
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
@@ -81,8 +90,6 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
                 return account
 
         queryset = self.filter_queryset(self.get_queryset())
-        import uuid
-        from django.db.models import Q
         try:
             val_uuid = uuid.UUID(str(lookup_val))
             obj = queryset.filter(

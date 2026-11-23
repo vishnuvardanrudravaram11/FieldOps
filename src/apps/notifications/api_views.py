@@ -1,10 +1,10 @@
-from drf_spectacular.utils import extend_schema, inline_serializer
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.exceptions import NotFound
+from apps.core.exceptions import NotFound, ValidationFailed
 from apps.tenancy.api import TenantAPIMixin
 
 from .models import Notification
@@ -40,5 +40,7 @@ class NotificationViewSet(TenantAPIMixin, viewsets.ReadOnlyModelViewSet):
     @extend_schema(request=None, responses={200: inline_serializer("NotificationReadAllResponse", fields={"marked": serializers.IntegerField()})})
     @action(detail=False, methods=["post"], url_path="read-all")
     def read_all(self, request):
+        if isinstance(request.data, list):
+            raise ValidationFailed("Request body must be a JSON object.", code="validation_failed")
         n = self.get_queryset().filter(read_at__isnull=True).update(read_at=timezone.now())
         return Response({"marked": n}, status=status.HTTP_200_OK)

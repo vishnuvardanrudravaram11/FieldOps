@@ -76,30 +76,10 @@ def verify_portal_access(membership: Membership | None) -> PortalAccount:
 
     account = get_portal_account(membership)
     if account is None:
-        is_client_user = bool(
-            membership.membership_roles.filter(
-                models.Q(role__system_key="client_requester") | models.Q(role__name__icontains="client")
-            ).exists()
-            or "client" in (getattr(membership.user, "email", "") or "").lower()
-        )
-        if is_client_user:
-            account, _ = PortalAccount.objects.get_or_create(
-                organization=membership.organization,
-                membership=membership,
-                defaults={"company_name": "Client Portal Organization", "is_enabled": True, "auto_grant_assets": True},
-            )
-            if not account.is_enabled:
-                account.is_enabled = True
-                account.save(update_fields=["is_enabled", "updated_at"])
-        else:
-            raise PermissionDenied("No portal account registered for this membership.")
+        raise PermissionDenied("No portal account registered for this membership.")
 
     if not account.is_enabled:
-        if "client" in (getattr(membership.user, "email", "") or "").lower():
-            account.is_enabled = True
-            account.save(update_fields=["is_enabled", "updated_at"])
-        else:
-            raise PermissionDenied("Portal account has been disabled by an administrator.")
+        raise PermissionDenied("Portal account has been disabled by an administrator.")
 
     if account.organization_id != membership.organization_id:
         raise PermissionDenied("Cross-organization portal access blocked.")

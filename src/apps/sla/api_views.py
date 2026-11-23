@@ -542,6 +542,8 @@ class SLATrackingViewSet(TenantAPIMixin, viewsets.ViewSet):
     def process(self, request):
         """Runs the SLA monitor for the caller's organization now (the same code the Celery task runs)."""
         require_permission(request.membership, "sla.process")
+        if isinstance(request.data, list):
+            raise ValidationFailed("Request body must be a JSON object.", code="validation_failed")
         return Response(services.process_organization(request.organization))
 
 
