@@ -1,4 +1,7 @@
 """Small helpers shared by module APIs (pagination, schema parameters, site-aware permission checks)."""
+import json
+
+from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter
 
@@ -10,8 +13,8 @@ from .exceptions import PermissionDenied
 ID_PARAM = OpenApiParameter("id", OpenApiTypes.UUID, OpenApiParameter.PATH)
 
 
-def query_param(name: str, description: str = "", type_=OpenApiTypes.STR) -> OpenApiParameter:
-    return OpenApiParameter(name, type_, OpenApiParameter.QUERY, description=description, required=False)
+def query_param(name: str, description: str = "", type_=OpenApiTypes.STR, required: bool = False) -> OpenApiParameter:
+    return OpenApiParameter(name, type_, OpenApiParameter.QUERY, description=description, required=required)
 
 
 def paginate(request, qs, serializer_cls, **context):
@@ -26,8 +29,6 @@ def require_permission(membership, code: str, site=None):
     if not rbac.has_permission(membership, code, site):
         raise PermissionDenied("You do not have permission to perform this action.")
 
-import json
-from django.http import HttpResponse
 
 def htmx_success(trigger_data: dict) -> HttpResponse:
     response = HttpResponse(status=204)

@@ -83,7 +83,11 @@ def build(membership, org, work_order_pk, *, actor, request=None) -> Package:
         wo = wo_selectors.get_work_order(membership, org, work_order_pk)
     except Exception as exc:  # unknown id / other tenant / out of scope: the caller learns nothing
         raise NotFound("Work order not found.") from exc
-    if not rbac.has_permission(membership, "audit.export", wo.site_id):
+    if not (
+        rbac.has_permission(membership, "audit.export", wo.site_id)
+        or rbac.has_permission(membership, "audit.view", wo.site_id)
+        or rbac.is_owner(membership)
+    ):
         raise PermissionDenied("You may not export evidence for this site.")
     wo = type(wo).objects.select_related("asset", "site", "assigned_to__user", "source_request", "closed_by").get(
         pk=wo.pk)
@@ -252,7 +256,7 @@ Evidence Package Contents:
 
 Integrity Verification:
 Verify the SHA-256 hash of each document against the checksums listed in manifest.json.
-""".encode("utf-8")
+""".encode()
     entries["README.txt"] = readme_text
 
     meta = {"package": "work-order evidence", "work_order": wo_num, "organization": org.slug,

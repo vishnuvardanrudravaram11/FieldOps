@@ -486,7 +486,7 @@ class AgreementViewSet(TenantAPIMixin, viewsets.ViewSet):
         return resp
 
 
-@extend_schema(parameters=[query_param("asset", "asset id (required)", OpenApiTypes.UUID),
+@extend_schema(parameters=[query_param("asset", "asset id (required)", OpenApiTypes.UUID, required=True),
                            query_param("work_type", "CORRECTIVE | PREVENTIVE | INSPECTION | INSTALLATION | OTHER"),
                            query_param("date", "reference date YYYY-MM-DD (default today)", OpenApiTypes.DATE)],
                responses=CoverageResultSerializer)
@@ -495,7 +495,14 @@ class CoverageViewSet(TenantAPIMixin, viewsets.ViewSet):
 
     permission_map = {"list": "contract.view"}
 
-    @extend_schema(responses=CoverageResultSerializer)
+    @extend_schema(
+        parameters=[
+            query_param("asset", "asset id (required)", OpenApiTypes.UUID, required=True),
+            query_param("work_type", "CORRECTIVE | PREVENTIVE | INSPECTION | INSTALLATION | OTHER"),
+            query_param("date", "reference date YYYY-MM-DD (default today)", OpenApiTypes.DATE),
+        ],
+        responses=CoverageResultSerializer,
+    )
     def list(self, request):
         asset_id = request.query_params.get("asset")
         if not asset_id:
