@@ -233,7 +233,7 @@ class WorkOrderSignoffSerializer(serializers.Serializer):
 
 class JobCompleteWithSignoffSerializer(serializers.Serializer):
     resolution_notes = serializers.CharField(min_length=10, max_length=2000)
-    signer_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    signer_name = serializers.CharField(max_length=150, required=True, allow_blank=False)
     signer_title = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     signature_data = serializers.CharField(required=False, allow_blank=True, default="")
     signature_file = serializers.FileField(required=False, allow_null=True, default=None)
@@ -242,7 +242,9 @@ class JobCompleteWithSignoffSerializer(serializers.Serializer):
     technician_notes = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
 
     def validate(self, attrs):
-        if attrs.get("signer_name") and not attrs.get("signature_data") and not attrs.get("signature_file"):
+        if not attrs.get("signer_name", "").strip():
+            raise serializers.ValidationError({"signer_name": "Signer name is required for customer sign-off."})
+        if not attrs.get("signature_data") and not attrs.get("signature_file"):
             raise serializers.ValidationError({"signature_data": "A customer digital signature is required."})
         return attrs
 

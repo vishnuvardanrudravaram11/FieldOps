@@ -136,7 +136,7 @@ class IdentifierViewSet(TenantAPIMixin, viewsets.ViewSet):
 
     @extend_schema(
         parameters=[
-            query_param("token", "label token string"),
+            query_param("token", "label token string", required=True),
             query_param("work_order", "optional work order UUID to verify asset match"),
         ],
         responses={200: OpenApiTypes.OBJECT},

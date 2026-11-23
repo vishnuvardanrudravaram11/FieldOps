@@ -4,10 +4,11 @@ import hmac
 import json
 import logging
 import urllib.request
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlparse
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.core.models import IntegrationEvent, WebhookEndpoint
@@ -60,55 +61,6 @@ def publish_integration_event(
     return event
 
 
-def dispatch_webhooks(event: IntegrationEvent) -> None:
-    from apps.core.models import WebhookEndpoint
-    import fnmatch
-    import hashlib
-    import hmac
-    import json
-    import urllib.request
-
-    endpoints = WebhookEndpoint.objects.filter(
-        organization=event.organization,
-        is_active=True,
-    )
-    payload_data = {
-        "event_id": str(event.pk),
-        "event_type": event.event_type,
-        "aggregate_type": event.aggregate_type,
-        "aggregate_id": event.aggregate_id,
-        "payload": event.payload,
-        "created_at": event.created_at.isoformat() if event.created_at else None,
-    }
-    payload_bytes = json.dumps(payload_data).encode("utf-8")
-
-    for ep in endpoints:
-        pattern = ep.event_pattern or "*"
-        if pattern == "*" or fnmatch.fnmatch(event.event_type, pattern):
-            headers = {
-                "Content-Type": "application/json",
-            }
-            if ep.secret_token:
-                sig = hmac.new(
-                    ep.secret_token.encode("utf-8"),
-                    payload_bytes,
-                    hashlib.sha256,
-                ).hexdigest()
-                headers["X-FieldOps-Signature"] = sig
-
-            req = urllib.request.Request(
-                ep.target_url,
-                data=payload_bytes,
-                headers=headers,
-                method="POST",
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    pass
-            except Exception as exc:
-                logger.warning("Webhook dispatch failed to %s: %s", ep.target_url, exc)
-
-
 def deliver_event(event: IntegrationEvent) -> bool:
     """Deliver a single integration event to registered handlers.
     Returns True on success, raises exception on failure.
@@ -116,7 +68,6 @@ def deliver_event(event: IntegrationEvent) -> bool:
     handlers = get_handlers(event.event_type)
     for handler in handlers:
         handler(event)
-    dispatch_webhooks(event)
     return True
 
 
@@ -193,7 +144,12 @@ def process_single_event(event_id: str) -> IntegrationEvent:
     )
     if not event:
         return None
-    if event.status == IntegrationEvent.Status.PUBLISHED:
+    if event.status in (IntegrationEvent.Status.PUBLISHED, IntegrationEvent.Status.FAILED):
+        return event
+    if event.retry_count >= event.max_retries:
+        if event.status != IntegrationEvent.Status.FAILED:
+            event.status = IntegrationEvent.Status.FAILED
+            event.save(update_fields=["status", "updated_at"])
         return event
 
     with tenant_context(event.organization):
@@ -225,9 +181,9 @@ def process_pending_events(batch_size: int = 50) -> int:
     candidate_ids = list(
         IntegrationEvent.objects.unscoped()
         .filter(
-            status__in=[IntegrationEvent.Status.PENDING, IntegrationEvent.Status.FAILED],
+            status=IntegrationEvent.Status.PENDING,
+            retry_count__lt=models.F("max_retries"),
         )
-        .exclude(retry_count__gte=5)
         .order_by("created_at")
         .values_list("pk", flat=True)[:batch_size]
     )

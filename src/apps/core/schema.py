@@ -69,3 +69,13 @@ def strip_unused_path_parameters(result, generator, request, public):
                     op.pop("parameters", None)
     return result
 
+
+def filter_api_v1_endpoints(endpoints):
+    """Filter OpenAPI schema endpoints to strictly include only /api/v1 routes."""
+    return [
+        (path, path_regex, method, callback)
+        for (path, path_regex, method, callback) in endpoints
+        if path.startswith("/api/v1") or path.startswith("^/api/v1")
+    ]
+
+

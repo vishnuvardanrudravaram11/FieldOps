@@ -1,22 +1,23 @@
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
+
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, Client
+from django.test import Client, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.assets.models import Asset, AssetCategory
 from apps.audit.models import AuditLog
-from apps.core.exceptions import Conflict, PermissionDenied, ValidationFailed
+from apps.core.exceptions import PermissionDenied
 from apps.rbac import services as rbac
 from apps.sites.models import Site, SiteContact, Zone
 from apps.tenancy import services as tenancy
 from apps.tenancy.models import Membership
-from apps.workspace import selectors as ws_selectors, services as ws_services
-from apps.workspace.models import TravelLog, WorkNote
-from apps.workorders.models import WorkOrder, WorkOrderLabor, WorkOrderMaterial, WorkOrderEvidence
 from apps.workorders import services as wo_services
+from apps.workorders.models import WorkOrder, WorkOrderEvidence, WorkOrderLabor, WorkOrderMaterial
+from apps.workspace import services as ws_services
+from apps.workspace.models import TravelLog, WorkNote
 
 
 class Module07FullLifecycleIntegrationTests(TestCase):
@@ -326,9 +327,11 @@ class Module07FullLifecycleIntegrationTests(TestCase):
         wo.checklist_required = False  # Certified
         wo.save()
 
-        # Step 13: Technician completes job with resolution notes (>= 10 chars)
+        # Step 13: Technician completes job with resolution notes (>= 10 chars) and sign-off
         complete_res = self.api_client.post(f"/api/v1/workspace/jobs/{wo.pk}/complete/", {
             "resolution_notes": "Successfully replaced mechanical shaft seal and gasket. Pressure tested at 150 PSI for 30 minutes with zero leakage. Pump operating smoothly at 1750 RPM.",
+            "signer_name": "Marcus Wright",
+            "signature_data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
         })
         self.assertEqual(complete_res.status_code, 200)
         wo.refresh_from_db()
@@ -408,7 +411,7 @@ class Module07FullLifecycleIntegrationTests(TestCase):
         self.assertIn(res_api_labor.status_code, (400, 403))
 
         # 5. Cross-tenant isolation: user from second organization cannot even find the job (404)
-        other_org_admin = User.objects.create_user(
+        _other_org_admin = User.objects.create_user(
             email="admin@rogue-org.test", password="Password123!", full_name="Rogue Admin"
         )
         rogue_org, _ = tenancy.create_organization(

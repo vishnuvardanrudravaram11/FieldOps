@@ -26,6 +26,8 @@ CLIENT_ALLOWED_INCIDENT_PERMS = {
     "incident.view_assigned",
     "incident.attach",
     "incident.confirm",
+    "incident.create",
+    "incident.view",
     "qr.scan",
     "user.self",
     "asset.view",
@@ -169,7 +171,7 @@ def create_portal_service_request(
     account = verify_portal_request_create_access(membership)
 
     # Resolve and validate asset
-    if isinstance(asset, (str, uuid.UUID)):
+    if isinstance(asset, str | uuid.UUID):
         asset_obj = Asset.objects.for_organization(org).filter(pk=asset).first()
         if not asset_obj:
             with tenant.platform_context():
@@ -189,7 +191,7 @@ def create_portal_service_request(
 
     # Resolve and validate optional site
     if site is not None:
-        if isinstance(site, (str, uuid.UUID)):
+        if isinstance(site, str | uuid.UUID):
             site_obj = Site.objects.for_organization(org).filter(pk=site).first()
             if not site_obj:
                 with tenant.platform_context():
@@ -683,7 +685,7 @@ def create_portal_account(
     membership: Membership,
     company_name: str = "",
     is_enabled: bool = True,
-    auto_grant_assets: bool = True,
+    auto_grant_assets: bool = False,
     notes: str = "",
     actor=None,
 ) -> PortalAccount:
@@ -696,7 +698,9 @@ def create_portal_account(
 
     perms = rbac.membership_permissions(membership)
     is_client_role = membership.membership_roles.filter(
-        models.Q(role__system_key="client_requester") | models.Q(role__name__icontains="client")
+        models.Q(role__system_key="client_requester")
+        | models.Q(role__name__icontains="client")
+        | models.Q(role__name__icontains="requester")
     ).exists() or "client" in (getattr(membership.user, "email", "") or "").lower()
     non_client_perms = [
         p for p in perms
@@ -740,7 +744,9 @@ def enable_portal_account(account: PortalAccount, actor=None) -> PortalAccount:
     """Enables a portal account and records an audit log entry."""
     perms = rbac.membership_permissions(account.membership)
     is_client_role = account.membership.membership_roles.filter(
-        models.Q(role__system_key="client_requester") | models.Q(role__name__icontains="client")
+        models.Q(role__system_key="client_requester")
+        | models.Q(role__name__icontains="client")
+        | models.Q(role__name__icontains="requester")
     ).exists() or "client" in (getattr(account.membership.user, "email", "") or "").lower()
     non_client_perms = [
         p for p in perms

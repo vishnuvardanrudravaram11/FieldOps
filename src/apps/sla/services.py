@@ -1206,6 +1206,8 @@ def process_organization(org, now: datetime | None = None) -> dict:
 @transaction.atomic
 def acknowledge_breach(breach: SLABreach, *, actor, request=None) -> SLABreach:
     breach = SLABreach.objects.select_for_update().get(pk=breach.pk)
+    if breach.status == SLABreach.Status.ACKNOWLEDGED:
+        return breach
     if breach.status != SLABreach.Status.OPEN:
         raise Conflict("Only an open breach can be acknowledged.", code="breach_not_open",
                        details={"status": breach.status})

@@ -43,8 +43,14 @@ class AuditLogViewSet(TenantAPIMixin, viewsets.ReadOnlyModelViewSet):
     through ``audit.record`` and are immutable at the database level."""
 
     serializer_class = AuditLogSerializer
-    permission_map = {"list": "audit.view", "retrieve": "audit.view", "export": "audit.export",
-                      "evidence": "audit.export", "metrics": "audit.view", "reports": "audit.view"}
+    permission_map = {
+        "list": "audit.view",
+        "retrieve": "audit.view",
+        "export": "audit.export",
+        "evidence": ("audit.export", "audit.view"),
+        "metrics": "audit.view",
+        "reports": "audit.view",
+    }
     filterset_fields: list = []
 
     def get_queryset(self):

@@ -37,6 +37,7 @@ class PortalAccountSerializer(serializers.ModelSerializer):
             "membership_status",
             "company_name",
             "is_enabled",
+            "auto_grant_assets",
             "notes",
             "created_at",
             "updated_at",
@@ -48,6 +49,7 @@ class PortalAccountCreateSerializer(serializers.Serializer):
     membership = serializers.UUIDField()
     company_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
     is_enabled = serializers.BooleanField(required=False, default=True)
+    auto_grant_assets = serializers.BooleanField(required=False, default=False)
     notes = serializers.CharField(required=False, allow_blank=True, default="")
 
 
@@ -118,6 +120,7 @@ class PortalAccountViewSet(TenantAPIMixin, viewsets.ModelViewSet):
                 membership=membership,
                 company_name=data.get("company_name", ""),
                 is_enabled=data.get("is_enabled", True),
+                auto_grant_assets=data.get("auto_grant_assets", False),
                 notes=data.get("notes", ""),
                 actor=request.user,
             )

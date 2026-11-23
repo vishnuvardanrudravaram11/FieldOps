@@ -638,67 +638,39 @@ class JobCompleteAPIView(TenantAPIMixin, APIView):
     def post(self, request, pk: str):
         wo = _resolve_job(request, pk)
 
-        signer_name = request.data.get("signer_name")
-        if signer_name:
-            serializer = JobCompleteWithSignoffSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            d = serializer.validated_data
+        serializer = JobCompleteWithSignoffSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
 
-            final_photo = request.FILES.get("final_photo") or d.get("final_photo")
-            sig_file = request.FILES.get("signature_file") or d.get("signature_file")
+        final_photo = request.FILES.get("final_photo") or d.get("final_photo")
+        sig_file = request.FILES.get("signature_file") or d.get("signature_file")
 
-            try:
-                order, signoff = services.complete_job_with_signoff(
-                    wo,
-                    resolution_notes=d["resolution_notes"],
-                    signer_name=d["signer_name"],
-                    signer_title=d.get("signer_title", ""),
-                    signature_data_base64=d.get("signature_data") or None,
-                    signature_file=sig_file,
-                    final_photo_file=final_photo,
-                    customer_notes=d.get("customer_notes", ""),
-                    technician_notes=d.get("technician_notes", ""),
-                    membership=request.membership,
-                    actor=request.user,
-                    request=request,
-                )
-            except DomainError as exc:
-                return _workspace_error_response(exc)
-
-            return Response(
-                {
-                    "status": order.status,
-                    "order_number": order.order_number,
-                    "signoff": WorkOrderSignoffSerializer(signoff).data,
-                },
-                status=status.HTTP_200_OK,
+        try:
+            order, signoff = services.complete_job_with_signoff(
+                wo,
+                resolution_notes=d["resolution_notes"],
+                signer_name=d["signer_name"],
+                signer_title=d.get("signer_title", ""),
+                signature_data_base64=d.get("signature_data") or None,
+                signature_file=sig_file,
+                final_photo_file=final_photo,
+                customer_notes=d.get("customer_notes", ""),
+                technician_notes=d.get("technician_notes", ""),
+                membership=request.membership,
+                actor=request.user,
+                request=request,
             )
-        else:
-            resolution_notes = (request.data.get("resolution_notes") or "").strip()
-            if len(resolution_notes) < 10:
-                return Response(
-                    {"error": {"code": "resolution_notes_required", "message": "Resolution notes must contain at least 10 characters."}},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            try:
-                order = services.complete_job(
-                    wo,
-                    resolution_notes=resolution_notes,
-                    membership=request.membership,
-                    actor=request.user,
-                    request=request,
-                )
-            except DomainError as exc:
-                return _workspace_error_response(exc)
+        except DomainError as exc:
+            return _workspace_error_response(exc)
 
-            return Response(
-                {
-                    "status": order.status,
-                    "order_number": order.order_number,
-                    "signoff": None,
-                },
-                status=status.HTTP_200_OK,
-            )
+        return Response(
+            {
+                "status": order.status,
+                "order_number": order.order_number,
+                "signoff": WorkOrderSignoffSerializer(signoff).data if signoff else None,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class JobMeterReadingAPIView(TenantAPIMixin, APIView):

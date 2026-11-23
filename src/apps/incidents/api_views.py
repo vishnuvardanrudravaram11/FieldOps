@@ -260,7 +260,7 @@ class ServiceRequestViewSet(TenantAPIMixin, viewsets.ViewSet):
     serializer_class = ServiceRequestSerializer
     pagination_class = StandardPagination
     permission_map = {
-        "list": "incident.view_assigned", "retrieve": "incident.view_assigned", "create": "incident.create",
+        "list": ("incident.view", "incident.view_assigned", "incident.report_owned"), "retrieve": "incident.view_assigned", "create": "incident.create",
         "partial_update": "incident.update", "transition": "incident.view_assigned",
         "history": "incident.view_assigned", "downtime:get": "incident.view_assigned",
         "downtime:put": "incident.downtime.manage",

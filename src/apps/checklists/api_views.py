@@ -404,7 +404,7 @@ class InspectionViewSet(TenantAPIMixin, viewsets.ViewSet):
                                                 membership=request.membership, actor=request.user, request=request)
         return Response(EvidenceSerializer(att).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[query_param("work_order", "work order id", OpenApiTypes.UUID)],
+    @extend_schema(parameters=[query_param("work_order", "work order id", OpenApiTypes.UUID, required=True)],
                    responses={200: OpenApiTypes.OBJECT})
     @action(detail=False, methods=["get"])
     def requirements(self, request):

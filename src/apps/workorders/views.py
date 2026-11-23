@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from apps.core.api import StandardPagination
 from apps.core.apiutils import ID_PARAM, paginate, query_param
-from apps.core.exceptions import Conflict, ValidationFailed
+from apps.core.exceptions import Conflict, PermissionDenied, ValidationFailed
 from apps.rbac import services as rbac
 from apps.sites import selectors as site_selectors
 from apps.sites.models import Shift, Site
@@ -66,7 +66,7 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
     def get_required_permission(self):
         action = getattr(self, "action", None)
         if action == "list":
-            return "work_order.view_assigned"
+            return ("work_order.view", "work_order.view_assigned")
         if action == "transition":
             req_data = getattr(self.request, "data", None)
             sub = req_data.get("action") if isinstance(req_data, dict) else None
@@ -210,6 +210,8 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
 
     @extend_schema(request=CreateWorkOrderSerializer, responses={201: WorkOrderSerializer})
     def create(self, request):
+        if not rbac.has_permission_anywhere(request.membership, "work_order.create"):
+            raise PermissionDenied("You do not have permission to create work orders.")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
