@@ -1044,7 +1044,7 @@ def complete_work_order(wo, *, membership, actor, resolution_notes, expected_ver
     )
     if not can_act:
         raise PermissionDenied("Only the assigned technician may complete this work order.")
-    resolution_notes = (resolution_notes or "").strip() or "Work completed successfully per specification."
+    resolution_notes = (resolution_notes or "").strip()
     if not wo.labor_entries.exists() and (wo.assigned_to or membership):
         WorkOrderLabor.objects.create(
             organization=wo.organization,

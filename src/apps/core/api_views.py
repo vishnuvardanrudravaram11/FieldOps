@@ -1,4 +1,5 @@
 import ipaddress
+import socket
 import uuid
 from urllib.parse import urlparse
 
@@ -44,15 +45,56 @@ class WebhookEndpointSerializer(serializers.ModelSerializer):
         parsed = urlparse(value or "")
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise serializers.ValidationError("Target URL must use http:// or https:// with a valid host.")
-        host = (parsed.hostname or "").lower()
-        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "169.254.169.254"):
+        host = (parsed.hostname or "").lower().strip()
+        if not host:
             raise serializers.ValidationError("Target URL cannot point to loopback, private, or cloud metadata addresses.")
+
+        metadata_hosts = {
+            "localhost", "metadata.google.internal", "metadata", "instance-data",
+            "169.254.169.254", "0.0.0.0", "127.0.0.1", "::1", "0",
+        }
+        if host in metadata_hosts or host.endswith(".internal") or host.endswith(".local"):
+            raise serializers.ValidationError("Target URL cannot point to loopback, private, or cloud metadata addresses.")
+
+        if host.isdigit():
+            try:
+                ip = ipaddress.IPv4Address(int(host))
+                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
+                    raise serializers.ValidationError("Target URL cannot point to loopback, private, or cloud metadata addresses.")
+            except (ValueError, ipaddress.AddressValueError):
+                raise serializers.ValidationError("Target URL cannot point to loopback, private, or cloud metadata addresses.")
+
+        raw_ip = None
+        try:
+            raw_ip = socket.inet_aton(host)
+        except OSError:
+            pass
+        if raw_ip:
+            ip_str = socket.inet_ntoa(raw_ip)
+            try:
+                ip = ipaddress.ip_address(ip_str)
+                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
+                    raise serializers.ValidationError("Target URL cannot point to loopback, private, or cloud metadata addresses.")
+            except ValueError:
+                pass
+
         try:
             ip = ipaddress.ip_address(host)
-            if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved:
+            if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
                 raise serializers.ValidationError("Target URL cannot point to loopback, private, or cloud metadata addresses.")
         except ValueError:
             pass  # It's a hostname / domain name
+
+        try:
+            infos = socket.getaddrinfo(host, None)
+            for _family, _, _, _, sockaddr in infos:
+                ip_str = sockaddr[0]
+                ip = ipaddress.ip_address(ip_str)
+                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
+                    raise serializers.ValidationError("Target URL cannot point to loopback, private, or cloud metadata addresses.")
+        except OSError:
+            pass
+
         return value
 
     def create(self, validated_data):
