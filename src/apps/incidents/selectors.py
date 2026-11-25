@@ -26,7 +26,9 @@ def is_owned_asset_reporter(membership) -> bool:
 
 
 def requests_for(membership, org, code: str = "incident.view"):
-    qs = ServiceRequest.objects.for_organization(org).select_related("asset", "site", "reported_by__user", "downtime").prefetch_related("work_orders")
+    qs = ServiceRequest.objects.for_organization(org).select_related(
+        "asset", "site", "reported_by__user", "downtime", "organization"
+    )
     from apps.rbac.models import MembershipRole
 
     role_keys = set(MembershipRole.objects.filter(membership=membership).values_list("role__system_key", flat=True))
@@ -116,3 +118,79 @@ def comments_for(membership, org, sr: ServiceRequest):
     if is_client_membership(membership):
         return qs.filter(is_internal=False)
     return qs
+
+
+def attach_linked_work_orders(org, requests) -> dict:
+    """Batch-fetch linked WorkOrders for a page of ServiceRequests in a single query.
+
+    Populates ``sr.linked_work_order`` on every request and returns
+    ``{sr.pk: [{"id", "number", "status"}, ...]}`` sorted by ``created_at``.
+    """
+    sr_list = list(requests)
+    if not sr_list or not apps.is_installed("apps.workorders"):
+        for sr in sr_list:
+            sr.linked_work_order = None
+        return {}
+
+    from collections import defaultdict
+
+    from apps.workorders.models import WorkOrder
+
+    sr_ids = [sr.pk for sr in sr_list]
+    sr_numbers = [sr.number for sr in sr_list]
+    wos = list(
+        WorkOrder.objects.for_organization(org)
+        .filter(
+            Q(source_request_id__in=sr_ids)
+            | Q(source_id__in=sr_ids)
+            | Q(
+                source_reference__in=sr_numbers,
+                source_type__in=(WorkOrder.SourceType.REQUEST, WorkOrder.SourceType.INCIDENT),
+            )
+        )
+        .select_related("assigned_to__user")
+        .order_by("created_at")
+    )
+
+    by_sr_id = defaultdict(list)
+    by_sr_num = defaultdict(list)
+    seen_by_sr = defaultdict(set)
+    by_id_lookup = {sr.pk: sr for sr in sr_list}
+    by_num_lookup = {sr.number: sr for sr in sr_list}
+
+    for wo in wos:
+        targets = []
+        if wo.source_request_id and wo.source_request_id in by_id_lookup:
+            targets.append(by_id_lookup[wo.source_request_id])
+        if wo.source_id and wo.source_id in by_id_lookup:
+            targets.append(by_id_lookup[wo.source_id])
+        if (
+            wo.source_reference
+            and wo.source_type in (WorkOrder.SourceType.REQUEST, WorkOrder.SourceType.INCIDENT)
+            and wo.source_reference in by_num_lookup
+        ):
+            targets.append(by_num_lookup[wo.source_reference])
+        for sr in targets:
+            if wo.pk not in seen_by_sr[sr.pk]:
+                seen_by_sr[sr.pk].add(wo.pk)
+                by_sr_id[sr.pk].append(wo)
+                if (
+                    wo.source_reference == sr.number
+                    and wo.source_type in (WorkOrder.SourceType.REQUEST, WorkOrder.SourceType.INCIDENT)
+                ):
+                    by_sr_num[sr.pk].append(wo)
+
+    work_orders_payload = {}
+    for sr in sr_list:
+        matched = by_sr_id.get(sr.pk, [])
+        live = next(
+            (w for w in matched if w.status not in (WorkOrder.Status.CANCELLED, WorkOrder.Status.CLOSED)),
+            None,
+        )
+        sr.linked_work_order = live if live is not None else (matched[-1] if matched else None)
+        serial_list = by_sr_num.get(sr.pk, [])
+        work_orders_payload[sr.pk] = [
+            {"id": str(w.pk), "number": w.order_number, "status": w.status}
+            for w in serial_list
+        ]
+    return work_orders_payload

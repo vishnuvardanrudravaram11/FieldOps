@@ -1,3 +1,4 @@
+from django.db.models import Count
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_field
 from rest_framework import serializers, status, viewsets
@@ -36,6 +37,9 @@ class TemplateSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_item_count(self, obj) -> int:
+        annotated = getattr(obj, "_item_count", None)
+        if annotated is not None:
+            return annotated
         return obj.items.count()
 
 
@@ -212,7 +216,10 @@ class ChecklistTemplateViewSet(TenantAPIMixin, viewsets.ViewSet):
     @extend_schema(parameters=[query_param("status", "DRAFT / ACTIVE / INACTIVE"), query_param("q", "name")],
                    responses=TemplateSerializer)
     def list(self, request):
-        qs = selectors.filter_templates(selectors.templates_for(request.organization), request.query_params)
+        qs = selectors.filter_templates(
+            selectors.templates_for(request.organization),
+            request.query_params,
+        ).annotate(_item_count=Count("items"))
         return paginate(request, qs, TemplateSerializer)
 
     @extend_schema(responses=TemplateDetailSerializer)

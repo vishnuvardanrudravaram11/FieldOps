@@ -1026,13 +1026,32 @@ class TechnicianProfileListAPIView(TenantAPIMixin, APIView):
     @extend_schema(summary="List technician profiles", responses={200: TechnicianProfileSerializer(many=True)})
     def get(self, request):
         from apps.tenancy.models import Membership
-        members = Membership.objects.filter(
-            organization=request.organization,
-            status=Membership.Status.ACTIVE,
-            membership_roles__role__system_key__in=["technician", "field_technician"],
-        ).distinct()
-        for m in members:
-            services.get_or_create_technician_profile(m)
+
+        from .models import TechnicianProfile
+
+        member_ids = list(
+            Membership.objects.filter(
+                organization=request.organization,
+                status=Membership.Status.ACTIVE,
+                membership_roles__role__system_key__in=["technician", "field_technician"],
+            )
+            .values_list("id", flat=True)
+            .distinct()
+        )
+        if member_ids:
+            existing_ids = set(
+                TechnicianProfile.objects.filter(
+                    organization=request.organization,
+                    membership_id__in=member_ids,
+                ).values_list("membership_id", flat=True)
+            )
+            missing = [
+                TechnicianProfile(organization=request.organization, membership_id=member_id)
+                for member_id in member_ids
+                if member_id not in existing_ids
+            ]
+            if missing:
+                TechnicianProfile.objects.bulk_create(missing, ignore_conflicts=True)
         profiles = selectors.technician_profiles_for_org(request.organization)
         return Response(TechnicianProfileSerializer(profiles, many=True).data)
 

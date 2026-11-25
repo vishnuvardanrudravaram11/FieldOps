@@ -91,7 +91,7 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
             return WorkOrder.objects.none()
         qs = WorkOrder.objects.for_organization(m.organization).select_related(
             "site", "assigned_to__user", "created_by", "asset", "component"
-        ).prefetch_related("closure_approvals")
+        ).prefetch_related("closure_approvals__approver")
         if not rbac.has_permission_anywhere(m, "work_order.view"):
             qs = qs.filter(assigned_to=m)
         scope = rbac.site_scope(m, "work_order.view")
@@ -191,8 +191,18 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
                             "planned_start", "-planned_start", "order_number", "-order_number"}
         if ordering in allowed_ordering:
             qs = qs.order_by(ordering)
-        page = self.paginate_queryset(qs.distinct())
-        return self.get_paginated_response(WorkOrderSerializer(page, many=True).data)
+        page = self.paginate_queryset(qs)
+        page_items = list(page) if page is not None else []
+        from .checklist_adapter import get_checklist_summaries
+
+        checklist_summaries = get_checklist_summaries(request.organization, page_items)
+        return self.get_paginated_response(
+            WorkOrderSerializer(
+                page_items,
+                many=True,
+                context={"checklist_summaries": checklist_summaries},
+            ).data
+        )
 
     @extend_schema(request=UpdateWorkOrderSerializer, responses={200: WorkOrderSerializer})
     def partial_update(self, request, pk=None):
@@ -206,7 +216,10 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
     @extend_schema(responses={200: WorkOrderSerializer})
     def retrieve(self, request, pk=None):
         wo = self.get_object()
-        return Response(WorkOrderSerializer(wo).data)
+        from .checklist_adapter import get_checklist_summaries
+
+        checklist_summaries = get_checklist_summaries(request.organization, [wo])
+        return Response(WorkOrderSerializer(wo, context={"checklist_summaries": checklist_summaries}).data)
 
     @extend_schema(request=CreateWorkOrderSerializer, responses={201: WorkOrderSerializer})
     def create(self, request):
@@ -403,8 +416,8 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
     @action(detail=True, methods=["get"], url_path="checklist-status")
     def checklist_status(self, request, pk=None):
         wo = self.get_object()
-        from .checklist_adapter import get_checklist_summary
-        return Response(get_checklist_summary(wo))
+        from .checklist_adapter import get_checklist_summaries
+        return Response(get_checklist_summaries(request.organization, [wo])[wo.pk])
 
     @extend_schema(request=None, responses={200: dict, 409: dict},
                    description="Evaluate the local adapter contract without contacting M08. Returns valid or pending metadata; it never creates checklist answers.")

@@ -44,6 +44,9 @@ class WorkOrderSerializer(serializers.ModelSerializer):
         return obj.status not in (WorkOrder.Status.CLOSED, WorkOrder.Status.CANCELLED)
 
     def get_checklist(self, obj) -> dict:
+        summaries = self.context.get("checklist_summaries")
+        if summaries is not None and obj.pk in summaries:
+            return summaries[obj.pk]
         from .checklist_adapter import get_checklist_summary
         return get_checklist_summary(obj)
 

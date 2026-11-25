@@ -104,9 +104,31 @@ def client_requests_for(membership: Membership | None) -> QuerySet[ServiceReques
     return (
         ServiceRequest.objects.for_organization(membership.organization)
         .filter(reported_by=membership)
-        .select_related("asset", "site", "reported_by__user")
+        .select_related("asset", "site", "reported_by__user", "organization")
+        .prefetch_related("sla_trackings")
         .order_by("-created_at")
     )
+
+
+def attachment_counts_for_requests(org, service_requests) -> dict[str, int]:
+    """Return {request_id_str: count} for a page of service requests in a single grouped query."""
+    ids = [str(sr.pk) for sr in service_requests]
+    if not ids:
+        return {}
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Count
+
+    from apps.files.models import Attachment
+    from apps.incidents.models import ServiceRequest
+
+    ct = ContentType.objects.get_for_model(ServiceRequest)
+    rows = (
+        Attachment.objects.for_organization(org)
+        .filter(content_type=ct, object_id__in=ids)
+        .values("object_id")
+        .annotate(total=Count("id"))
+    )
+    return {row["object_id"]: row["total"] for row in rows}
 
 
 def get_client_request(membership: Membership | None, request_id: str | uuid.UUID) -> ServiceRequest | None:
@@ -291,12 +313,19 @@ def get_client_sla_indicator(service_request) -> dict | None:
     if not service_request:
         return None
 
-    tracking_obj = getattr(service_request, "sla_trackings", None)
-    if tracking_obj is not None and hasattr(tracking_obj, "first"):
-        tracking_obj = tracking_obj.first()
+    tracking_obj = None
+    prefetched = getattr(service_request, "_prefetched_objects_cache", None) or {}
+    if "sla_trackings" in prefetched:
+        trackings = prefetched["sla_trackings"]
+        tracking_obj = trackings[0] if trackings else None
     else:
-        from apps.sla.models import SLATracking
-        tracking_obj = SLATracking.objects.filter(request=service_request).first()
+        rel = getattr(service_request, "sla_trackings", None)
+        if rel is not None and hasattr(rel, "all"):
+            trackings = list(rel.all()[:1])
+            tracking_obj = trackings[0] if trackings else None
+        else:
+            from apps.sla.models import SLATracking
+            tracking_obj = SLATracking.objects.filter(request=service_request).first()
 
     if not tracking_obj:
         return None

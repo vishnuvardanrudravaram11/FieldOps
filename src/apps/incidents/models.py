@@ -63,6 +63,8 @@ class ServiceRequest(TenantOwnedModel):
             models.Index(fields=["organization", "asset"]),
             models.Index(fields=["organization", "severity"]),
             models.Index(fields=["organization", "asset", "status"], name="incidents_org_asset_status_idx"),
+            models.Index(fields=["organization", "-created_at"], name="incidents_org_created_idx"),
+            models.Index(fields=["organization", "reported_by", "-created_at"], name="inc_org_rep_created_idx"),
         ]
 
     def __str__(self):
@@ -72,6 +74,13 @@ class ServiceRequest(TenantOwnedModel):
     def linked_work_order(self):
         if hasattr(self, "_linked_work_order"):
             return self._linked_work_order
+        prefetched = getattr(self, "_prefetched_objects_cache", None) or {}
+        if "work_orders" in prefetched:
+            prefetched_wos = list(prefetched["work_orders"])
+            live = next((w for w in prefetched_wos if w.status not in ("CANCELLED", "CLOSED")), None)
+            if live is not None:
+                return live
+            return max(prefetched_wos, key=lambda w: w.created_at) if prefetched_wos else None
         from django.apps import apps
         if apps.is_installed("apps.workorders"):
             from apps.workorders.models import WorkOrder

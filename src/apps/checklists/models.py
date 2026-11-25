@@ -33,7 +33,10 @@ class ChecklistTemplate(TenantOwnedModel):
             models.UniqueConstraint(fields=["organization", "key"], condition=models.Q(status=ACTIVE),
                                     name="uniq_active_checklist_per_key"),
         ]
-        indexes = [models.Index(fields=["organization", "status"])]
+        indexes = [
+            models.Index(fields=["organization", "status"]),
+            models.Index(fields=["organization", "-created_at", "-version"], name="chk_tmpl_org_created_idx"),
+        ]
 
     def __str__(self):
         return f"{self.name} v{self.version}"

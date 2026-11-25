@@ -69,8 +69,7 @@ def verify_portal_access(membership: Membership | None) -> PortalAccount:
         raise PermissionDenied("User account is inactive.")
 
     has_view = (
-        rbac.has_permission(membership, "portal.request.view")
-        or rbac.has_permission_anywhere(membership, "portal.request.view")
+        rbac.has_permission_anywhere(membership, "portal.request.view")
         or membership.membership_roles.filter(role__system_key="client_requester").exists()
     )
     if not has_view:
@@ -97,10 +96,7 @@ def verify_portal_request_create_access(membership: Membership | None) -> Portal
     2. Permission: portal.request.create
     """
     account = verify_portal_access(membership)
-    has_create = (
-        rbac.has_permission(membership, "portal.request.create")
-        or rbac.has_permission_anywhere(membership, "portal.request.create")
-    )
+    has_create = rbac.has_permission_anywhere(membership, "portal.request.create")
     if not has_create:
         raise PermissionDenied("Account lacks request creation permission.")
     return account

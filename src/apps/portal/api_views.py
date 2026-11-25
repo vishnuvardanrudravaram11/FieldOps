@@ -379,6 +379,9 @@ class PortalServiceRequestSerializer(serializers.ModelSerializer):
         return selectors.get_status_stage(obj.status)
 
     def get_attachments_count(self, obj) -> int:
+        counts = self.context.get("attachments_counts")
+        if counts is not None:
+            return counts.get(str(obj.pk), 0)
         from apps.incidents.selectors import evidence_for
         return evidence_for(obj.organization, obj).count()
 
@@ -548,7 +551,16 @@ class PortalRequestListCreateView(TenantAPIMixin, APIView):
         if ordering in ("-created_at", "created_at", "-number", "number", "-updated_at", "updated_at", "status", "-status"):
             qs = qs.order_by(ordering)
 
-        return paginate(request, qs, PortalServiceRequestSerializer)
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(qs, request)
+        attachments_counts = selectors.attachment_counts_for_requests(request.organization, page or [])
+        return paginator.get_paginated_response(
+            PortalServiceRequestSerializer(
+                page,
+                many=True,
+                context={"attachments_counts": attachments_counts},
+            ).data
+        )
 
     @extend_schema(
         request=PortalServiceRequestCreateSerializer,

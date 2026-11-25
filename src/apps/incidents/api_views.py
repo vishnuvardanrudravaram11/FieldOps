@@ -86,6 +86,9 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         return {"id": str(wo.pk), "number": wo.order_number, "status": wo.status}
 
     def get_work_orders(self, obj) -> list[dict]:
+        by_req = self.context.get("work_orders_by_request")
+        if by_req is not None:
+            return by_req.get(obj.pk, [])
         if not apps.is_installed("apps.workorders"):
             return []
         from apps.workorders.models import WorkOrder
@@ -294,12 +297,29 @@ class ServiceRequestViewSet(TenantAPIMixin, viewsets.ViewSet):
                     query_param("ordering", "-created_at, number, severity, status")],
         responses=ServiceRequestSerializer)
     def list(self, request):
-        return paginate(request, selectors.filter_requests(self._qs(request), request.query_params),
-                        ServiceRequestSerializer)
+        paginator = StandardPagination()
+        qs = selectors.filter_requests(self._qs(request), request.query_params)
+        page = paginator.paginate_queryset(qs, request)
+        page_items = list(page) if page is not None else []
+        work_orders_by_request = selectors.attach_linked_work_orders(request.organization, page_items)
+        return paginator.get_paginated_response(
+            ServiceRequestSerializer(
+                page_items,
+                many=True,
+                context={"work_orders_by_request": work_orders_by_request},
+            ).data
+        )
 
     @extend_schema(responses=ServiceRequestSerializer)
     def retrieve(self, request, pk=None):
-        return Response(ServiceRequestSerializer(self._obj(request, pk)).data)
+        sr = self._obj(request, pk)
+        work_orders_by_request = selectors.attach_linked_work_orders(request.organization, [sr])
+        return Response(
+            ServiceRequestSerializer(
+                sr,
+                context={"work_orders_by_request": work_orders_by_request},
+            ).data
+        )
 
     @extend_schema(
         methods=["GET"],

@@ -87,7 +87,9 @@ def filter_plans(qs, params):
 
 def schedules_for(membership, org):
     scope = rbac.site_scope(membership, "maintenance.view")
-    qs = MaintenanceSchedule.objects.for_organization(org).select_related("plan__asset", "plan__site", "meter")
+    qs = MaintenanceSchedule.objects.for_organization(org).select_related(
+        "plan__organization", "plan__asset", "plan__site", "meter"
+    )
     return scope.filter(qs, "plan__site_id")
 
 

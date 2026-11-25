@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 
 from apps.rbac import services as rbac
 from apps.sites.selectors import scoped_get
@@ -21,7 +21,16 @@ def _uuid_or_none(value):
 
 def agreements_for(membership, org):
     scope = rbac.site_scope(membership, "contract.view")
-    qs = CoverageAgreement.objects.for_organization(org).select_related("provider", "site")
+    covered_qs = (
+        CoveredAsset.objects.for_organization(org)
+        .select_related("asset")
+        .order_by("asset__asset_tag")
+    )
+    qs = (
+        CoverageAgreement.objects.for_organization(org)
+        .select_related("provider", "site", "renewed_from")
+        .prefetch_related("exclusions", Prefetch("covered_assets", queryset=covered_qs))
+    )
     return scope.filter(qs, "site_id")
 
 

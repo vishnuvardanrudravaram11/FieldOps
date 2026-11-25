@@ -126,8 +126,13 @@ class AgreementSerializer(serializers.ModelSerializer):
         return obj.state()
 
     def get_assets(self, obj) -> list[dict]:
-        return [{"id": str(c.asset_id), "asset_tag": c.asset.asset_tag, "name": c.asset.name}
-                for c in selectors.covered_assets_for(obj)]
+        prefetched = getattr(obj, "_prefetched_objects_cache", None) or {}
+        covered = (
+            prefetched["covered_assets"]
+            if "covered_assets" in prefetched
+            else selectors.covered_assets_for(obj)
+        )
+        return [{"id": str(c.asset_id), "asset_tag": c.asset.asset_tag, "name": c.asset.name} for c in covered]
 
     def get_excluded_work_types(self, obj) -> list[str]:
         return sorted(e.work_type for e in obj.exclusions.all())

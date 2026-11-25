@@ -159,17 +159,166 @@ def validate_for_closure(work_order):
     return validate_for_completion(work_order)
 
 
-def get_checklist_summary(work_order):
-    result = get_checklist_status(work_order)
+def _format_summary(work_order, result: ChecklistResult, *, instance_ref: str | None = None,
+                    validation_state: str | None = None) -> dict:
     return result.as_dict() | {
         "template_ref": work_order.checklist_template_ref,
-        "instance_ref": work_order.checklist_instance_ref,
-        "validation_state": work_order.checklist_validation_state,
-        "integration_status": "Checklist Engine integrated." if result.is_valid else "Checklist Engine integration pending.",
+        "instance_ref": work_order.checklist_instance_ref if instance_ref is None else instance_ref,
+        "validation_state": work_order.checklist_validation_state if validation_state is None else validation_state,
+        "integration_status": ("Checklist Engine integrated." if result.is_valid
+                               else "Checklist Engine integration pending."),
         "provisional_only": bool(work_order.provisional_checklist),
         "provisional_message": ("Provisional checklist only — not valid as completion evidence."
                                 if work_order.provisional_checklist else ""),
     }
+
+
+def get_checklist_summary(work_order):
+    result = get_checklist_status(work_order)
+    return _format_summary(work_order, result)
+
+
+def get_checklist_summaries(org, work_orders) -> dict:
+    """Batch read-only checklist summaries for a page of work orders in O(1) queries (zero writes)."""
+    from collections import defaultdict
+    from uuid import UUID
+
+    from django.apps import apps
+
+    wos = list(work_orders)
+    if not wos:
+        return {}
+
+    out = {}
+    unresolved = []
+    for wo in wos:
+        if not wo.checklist_required:
+            out[wo.pk] = _format_summary(
+                wo, ChecklistResult(False, NOT_REQUIRED, True, message="No checklist is required.")
+            )
+        elif (
+            wo.checklist_status == COMPLETED
+            and wo.checklist_instance_ref
+            and wo.checklist_validation_state == "VALID"
+        ):
+            out[wo.pk] = _format_summary(
+                wo, ChecklistResult(True, COMPLETED, True, message="Checklist validated.")
+            )
+        else:
+            unresolved.append(wo)
+
+    if not unresolved:
+        return out
+
+    m08_handled: set = set()
+    instance_refs: dict = {}
+    try:
+        if apps.is_installed("apps.checklists"):
+            from apps.checklists.models import ChecklistTemplate, Inspection
+            from apps.checklists.workflow import ACTIVE
+
+            unresolved_ids = [wo.pk for wo in unresolved]
+            org_templates = list(ChecklistTemplate.objects.for_organization(org))
+            active_templates = [t for t in org_templates if t.status == ACTIVE]
+            inspections_by_wo = defaultdict(list)
+            for insp in (
+                Inspection.objects.for_organization(org)
+                .filter(work_order_id__in=unresolved_ids)
+                .select_related("template")
+                .order_by("-started_at")
+            ):
+                inspections_by_wo[insp.work_order_id].append(insp)
+
+            pm_wos = [w for w in unresolved if getattr(w, "source_type", "") in ("PREVENTIVE_MAINTENANCE", "PM")]
+            pm_keys = {}
+            if pm_wos and apps.is_installed("apps.maintenance"):
+                from apps.maintenance.models import MaintenanceCycle
+
+                raw_pm = dict(
+                    MaintenanceCycle.objects.for_organization(org)
+                    .filter(work_order__in=pm_wos)
+                    .exclude(schedule__plan__checklist_key="")
+                    .values_list("work_order_id", "schedule__plan__checklist_key")
+                )
+                for wo_id, raw_key in raw_pm.items():
+                    try:
+                        pm_keys[wo_id] = str(UUID(str(raw_key)))
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+
+            has_org_templates = bool(org_templates)
+            for wo in unresolved:
+                wo_insps = inspections_by_wo.get(wo.pk, [])
+                if not wo_insps and not has_org_templates:
+                    continue
+                pm_key = pm_keys.get(wo.pk)
+                req_templates = [
+                    t for t in active_templates
+                    if (t.is_required and t.work_type in ("", wo.work_type))
+                    or (pm_key and str(t.key) == pm_key)
+                ]
+                blockers = []
+                for t in req_templates:
+                    done = [i for i in wo_insps if i.template.key == t.key and i.status == COMPLETED]
+                    if not done:
+                        running = [i for i in wo_insps if i.template.key == t.key]
+                        blockers.append(
+                            f"Required checklist '{t.name}' is not completed."
+                            if running
+                            else f"Required checklist '{t.name}' has not been started."
+                        )
+                for i in wo_insps:
+                    if i.status != COMPLETED and i.template.is_required and i.template.status != ACTIVE:
+                        blockers.append(f"Required checklist '{i.template.name}' is not completed.")
+                blockers = list(dict.fromkeys(blockers))
+
+                insp = wo_insps[0] if wo_insps else None
+                if insp:
+                    instance_refs[wo.pk] = wo.checklist_instance_ref or str(insp.pk)
+                    if insp.status == COMPLETED:
+                        if not blockers:
+                            res = ChecklistResult(True, COMPLETED, True, message="Checklist validated.")
+                            out[wo.pk] = _format_summary(
+                                wo, res, instance_ref=instance_refs[wo.pk], validation_state="VALID"
+                            )
+                        else:
+                            res = ChecklistResult(
+                                True, FAILED, False,
+                                message="Checklist has unresolved issues: " + "; ".join(blockers),
+                            )
+                            out[wo.pk] = _format_summary(wo, res, instance_ref=instance_refs[wo.pk])
+                        m08_handled.add(wo.pk)
+                    elif insp.status == IN_PROGRESS:
+                        res = ChecklistResult(
+                            True, IN_PROGRESS, False,
+                            message="Checklist completion is required before completing this work order.",
+                        )
+                        out[wo.pk] = _format_summary(wo, res, instance_ref=instance_refs[wo.pk])
+                        m08_handled.add(wo.pk)
+                else:
+                    if not blockers:
+                        res = ChecklistResult(False, NOT_REQUIRED, True, message="No checklist is required.")
+                    else:
+                        res = ChecklistResult(
+                            True, PENDING, False,
+                            message="Checklist completion is required before completing this work order.",
+                        )
+                    out[wo.pk] = _format_summary(wo, res)
+                    m08_handled.add(wo.pk)
+    except Exception:
+        pass
+
+    for wo in unresolved:
+        if wo.pk in m08_handled:
+            continue
+        st = wo.checklist_status if wo.checklist_status in {PENDING, IN_PROGRESS, FAILED, COMPLETED} else PENDING
+        res = ChecklistResult(
+            True, st, False,
+            message="Checklist completion is required before completing this work order.",
+        )
+        out[wo.pk] = _format_summary(wo, res, instance_ref=instance_refs.get(wo.pk))
+
+    return out
 
 
 def record_external_validation(work_order, *, status, validation_state, completed_at=None):
