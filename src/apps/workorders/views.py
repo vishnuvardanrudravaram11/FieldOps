@@ -400,7 +400,8 @@ class WorkOrderViewSet(TenantAPIMixin, viewsets.GenericViewSet):
         return self._action(pk, lambda wo, **kw: services.record_work_update(
             wo, update=kw.pop("text"), **kw), WorkNoteSerializer)
 
-    @extend_schema(exclude=True)
+    @extend_schema(request=ProvisionalChecklistSerializer, responses={200: WorkOrderSerializer},
+                   description="Set a provisional free-form checklist on a work order (pre-M08 flow).")
     @action(detail=True, methods=["post"], url_path="provisional-checklist")
     def provisional_checklist(self, request, pk=None):
         return self._action(pk, lambda wo, **kw: services.set_checklist(wo, items=kw.pop("items"), **kw),

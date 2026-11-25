@@ -166,11 +166,19 @@ class PlatformOrganizationViewSet(PlatformAPIMixin, viewsets.ViewSet):
     @extend_schema(responses={200: serializers.DictField()})
     def destroy(self, request, pk=None):
         org = self._get_org(pk)
+        # DEF-003: already-decommissioned orgs must return 404 on repeated DELETE while
+        # still permitting deletion of an org suspended for non-deletion reasons (e.g. billing).
+        if org.status == Organization.Status.SUSPENDED and (org.suspended_reason or "").startswith(
+            "Deleted/Decommissioned by "
+        ):
+            from django.http import Http404
+
+            raise Http404("Organization not found.")
         hard, msg = services.delete_organization(org, actor=request.user, request=request)
         return Response({"success": True, "hard_deleted": hard, "message": msg}, status=status.HTTP_200_OK)
 
     @extend_schema(request=PlatformOrganizationStatusSerializer, responses=OrganizationSerializer, summary="Update organization status")
-    @action(detail=True, methods=["post", "patch"])
+    @action(detail=True, methods=["post", "patch"], url_path="status")
     def set_status(self, request, pk=None):
         org = self._get_org(pk)
         ser = PlatformOrganizationStatusSerializer(data=request.data)
