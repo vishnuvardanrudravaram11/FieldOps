@@ -85,10 +85,11 @@ class SiteForm(BootstrapFormMixin, forms.Form):
         max_length=100,
         required=True,
         label="City",
-        widget=forms.Select(attrs={
+        widget=forms.TextInput(attrs={
             "id": "id_city",
-            "class": "form-select",
-            "required": "required"
+            "class": "form-control",
+            "placeholder": "e.g. Pune",
+            "required": "required",
         })
     )
     postal_code = forms.CharField(
@@ -166,7 +167,8 @@ class SiteForm(BootstrapFormMixin, forms.Form):
         curr_city = (data.get("city") or "").strip() if data else ""
         if curr_city and curr_city not in [c for c, _ in city_choices]:
             city_choices.append((curr_city, curr_city))
-        self.fields["city"].widget.choices = city_choices
+        if hasattr(self.fields["city"].widget, "choices"):
+            self.fields["city"].widget.choices = city_choices
 
     def clean_code(self):
         code = (self.cleaned_data.get("code") or "").strip().upper()
