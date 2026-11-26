@@ -126,13 +126,8 @@ class AgreementSerializer(serializers.ModelSerializer):
         return obj.state()
 
     def get_assets(self, obj) -> list[dict]:
-        prefetched = getattr(obj, "_prefetched_objects_cache", None) or {}
-        covered = (
-            prefetched["covered_assets"]
-            if "covered_assets" in prefetched
-            else selectors.covered_assets_for(obj)
-        )
-        return [{"id": str(c.asset_id), "asset_tag": c.asset.asset_tag, "name": c.asset.name} for c in covered]
+        return [{"id": str(c.asset_id), "asset_tag": c.asset.asset_tag, "name": c.asset.name}
+                for c in selectors.covered_assets_for(obj)]
 
     def get_excluded_work_types(self, obj) -> list[str]:
         return sorted(e.work_type for e in obj.exclusions.all())
@@ -492,7 +487,7 @@ class AgreementViewSet(TenantAPIMixin, viewsets.ViewSet):
 
 
 @extend_schema(parameters=[query_param("asset", "asset id (required)", OpenApiTypes.UUID, required=True),
-                           query_param("work_type", "CORRECTIVE | PREVENTIVE | INSPECTION | INSTALLATION | OTHER"),
+                           query_param("work_type", "CORRECTIVE | PREVENTIVE | INSPECTION | INSTALLATION | EMERGENCY | OTHER"),
                            query_param("date", "reference date YYYY-MM-DD (default today)", OpenApiTypes.DATE)],
                responses=CoverageResultSerializer)
 class CoverageViewSet(TenantAPIMixin, viewsets.ViewSet):
@@ -503,7 +498,7 @@ class CoverageViewSet(TenantAPIMixin, viewsets.ViewSet):
     @extend_schema(
         parameters=[
             query_param("asset", "asset id (required)", OpenApiTypes.UUID, required=True),
-            query_param("work_type", "CORRECTIVE | PREVENTIVE | INSPECTION | INSTALLATION | OTHER"),
+            query_param("work_type", "CORRECTIVE | PREVENTIVE | INSPECTION | INSTALLATION | EMERGENCY | OTHER"),
             query_param("date", "reference date YYYY-MM-DD (default today)", OpenApiTypes.DATE),
         ],
         responses=CoverageResultSerializer,
