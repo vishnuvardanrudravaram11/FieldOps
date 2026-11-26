@@ -28,7 +28,7 @@ from .models import CoverageAgreement, CoverageCheck, CoverageExclusion, Covered
 Kind = CoverageAgreement.Kind
 AGREEMENT_FIELDS = ["reference", "title", "kind", "provider", "site", "start_date", "end_date", "terms",
                     "exclusion_notes", "sla_terms", "sla_profile", "renewal_alert_days", "is_active"]
-WORK_TYPES = ("CORRECTIVE", "PREVENTIVE", "INSPECTION", "INSTALLATION", "OTHER")
+WORK_TYPES = ("CORRECTIVE", "PREVENTIVE", "INSPECTION", "INSTALLATION", "EMERGENCY", "OTHER")
 KIND_ORDER = {Kind.WARRANTY: 0, Kind.AMC: 1, Kind.SERVICE_CONTRACT: 2}
 
 
